@@ -23,7 +23,7 @@ mkdir -p app/src/main/res/mipmap-anydpi
 mkdir -p app/src/main/res/values
 mkdir -p app/src/main/res/xml
 
-echo "[2/3] Ecriture des 44 fichiers..."
+echo "[2/3] Ecriture des 63 fichiers..."
 echo "  -> settings.gradle"
 cat << 'EOF' > settings.gradle
 include ':app'
@@ -68,18 +68,35 @@ android {
     namespace 'com.elg.music'
     compileSdk 36
 
+    // Signature fixe : le même fichier debug.keystore (généré par setup_elg_full.sh) signe toutes
+    // les versions, debug comme release. Android accepte alors d'installer chaque nouvelle version
+    // par-dessus la précédente, sans message d'incompatibilité de signature.
+    signingConfigs {
+        elgFixed {
+            storeFile file('debug.keystore')
+            storeType 'pkcs12'
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
     defaultConfig {
         applicationId 'com.elg.music'
         minSdk 33
         targetSdk 36
-        versionCode 2
-        versionName '1.01'
+        versionCode 3
+        versionName '1.02'
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
 
     buildTypes {
+        debug {
+            signingConfig signingConfigs.elgFixed
+        }
         release {
+            signingConfig signingConfigs.elgFixed
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -249,6 +266,62 @@ cat << 'EOF' > app/src/main/res/values/strings.xml
         <item>Date d\'ajout (plus récents en premier)</item>
         <item>Date d\'ajout (plus anciens en premier)</item>
     </string-array>
+
+    <!-- ===================== ALÉATOIRE ET RÉPÉTITION ===================== -->
+    <string name="mini_player_shuffle_description">Lecture aléatoire</string>
+    <string name="mini_player_repeat_description">Répétition</string>
+    <string name="state_on">Activée</string>
+    <string name="state_off">Désactivée</string>
+    <string name="state_repeat_all">Toute la liste</string>
+    <string name="state_repeat_one">Ce titre</string>
+
+    <!-- ===================== NOMBRE DE TITRES ===================== -->
+    <plurals name="song_count">
+        <item quantity="one">%d titre</item>
+        <item quantity="other">%d titres</item>
+    </plurals>
+
+    <!-- ===================== ONGLET DOSSIERS ===================== -->
+    <string name="folder_root_name">Racine du stockage</string>
+    <string name="folder_details_format">%1$s · %2$s</string>
+    <string name="folder_row_content_description">Ouvrir le dossier %1$s, %2$s</string>
+    <string name="folder_back_description">Revenir à la liste</string>
+    <string name="folder_play_all">Lire le dossier</string>
+    <string name="empty_folders_message">Aucun dossier ne contient de musique pour le moment.</string>
+
+    <!-- ===================== ONGLET PLAYLISTS ===================== -->
+    <string name="playlist_create_fab_description">Créer une nouvelle playlist</string>
+    <string name="playlist_create_title">Nouvelle playlist</string>
+    <string name="playlist_name_hint">Nom de la playlist</string>
+    <string name="playlist_create_confirm">Créer</string>
+    <string name="playlist_name_error_empty">Saisissez un nom pour la playlist.</string>
+    <string name="playlist_name_error_duplicate">Une playlist porte déjà ce nom.</string>
+    <string name="playlist_created_message">Playlist « %1$s » créée</string>
+    <string name="playlist_created_with_song_message">Playlist « %1$s » créée, %2$s ajouté</string>
+    <string name="playlist_add_dialog_title">Ajouter à une playlist</string>
+    <string name="playlist_add_new_option">Nouvelle playlist…</string>
+    <string name="playlist_song_added_message">%1$s ajouté à « %2$s »</string>
+    <string name="playlist_song_already_message">%1$s est déjà dans « %2$s »</string>
+    <string name="playlist_song_removed_message">%1$s retiré de « %2$s »</string>
+    <string name="playlist_deleted_message">Playlist « %1$s » supprimée</string>
+    <string name="playlist_delete_dialog_title">Supprimer cette playlist ?</string>
+    <string name="playlist_delete_dialog_message">« %1$s » sera supprimée. Les morceaux restent sur l\'appareil.</string>
+    <string name="playlist_delete_action">Supprimer la playlist</string>
+    <string name="playlist_play_all">Tout lire</string>
+    <string name="playlist_row_details_format">%1$s · créée le %2$s</string>
+    <string name="playlist_row_content_description">Ouvrir la playlist %1$s, %2$s</string>
+    <string name="playlist_menu_button_description">Options pour la playlist %1$s</string>
+    <string name="empty_playlists_message">Aucune playlist pour l\'instant. Touchez le bouton + pour en créer une.</string>
+    <string name="empty_playlist_detail_message">Cette playlist est vide. Utilisez le menu à trois points d\'un titre pour l\'ajouter ici.</string>
+    <string name="empty_search_message">Aucun résultat pour cette recherche.</string>
+    <string name="song_menu_add_to_playlist">Ajouter à une playlist…</string>
+    <string name="song_menu_remove_from_playlist">Retirer de cette playlist</string>
+
+    <!-- ===================== ONGLET FAVORIS ===================== -->
+    <string name="favorites_empty_title">Aucun favori pour le moment</string>
+    <string name="favorites_empty_message">Ouvrez le menu à trois points d\'un titre et choisissez « Ajouter aux favoris ».</string>
+    <string name="favorites_explore_button">Explorer la bibliothèque</string>
+    <string name="favorites_shuffle_all">Lecture aléatoire</string>
 
     <!-- ===================== LISTE DES MORCEAUX ===================== -->
     <string name="song_row_content_description">Lire %1$s, de %2$s</string>
@@ -547,6 +620,15 @@ cat << 'EOF' > app/src/main/res/menu/menu_song_item.xml
         android:title="@string/song_menu_add_favorite" />
 
     <item
+        android:id="@+id/action_add_to_playlist"
+        android:title="@string/song_menu_add_to_playlist" />
+
+    <item
+        android:id="@+id/action_remove_from_playlist"
+        android:title="@string/song_menu_remove_from_playlist"
+        android:visible="false" />
+
+    <item
         android:id="@+id/action_hide_song"
         android:title="@string/song_menu_hide" />
 
@@ -648,6 +730,100 @@ cat << 'EOF' > app/src/main/res/layout/activity_main.xml
         app:layout_constraintTop_toTopOf="@id/tabLayoutFilters"
         app:tint="?attr/colorOnSurface" />
 
+    <!-- En-tête contextuel : retour + titre (détail d'un dossier / d'une playlist), boutons de lecture -->
+    <LinearLayout
+        android:id="@+id/headerBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="?attr/colorSurface"
+        android:orientation="vertical"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tabLayoutFilters"
+        tools:visibility="visible">
+
+        <LinearLayout
+            android:id="@+id/layoutHeaderTitleRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="4dp"
+            android:paddingEnd="16dp">
+
+            <ImageButton
+                android:id="@+id/buttonHeaderBack"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/folder_back_description"
+                android:src="@drawable/ic_arrow_back"
+                app:tint="?attr/colorOnSurface" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/textHeaderTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textAppearance="?attr/textAppearanceTitleMedium"
+                    tools:text="Afrobeat" />
+
+                <TextView
+                    android:id="@+id/textHeaderSubtitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="middle"
+                    android:maxLines="1"
+                    android:textAppearance="?attr/textAppearanceBodyMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    tools:text="12 titres · /Music/Afrobeat/" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="12dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="4dp">
+
+            <Button
+                android:id="@+id/buttonHeaderPrimary"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                tools:text="Lire le dossier" />
+
+            <Button
+                android:id="@+id/buttonHeaderSecondary"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:minHeight="48dp"
+                android:text="@string/playlist_delete_action"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerSongs"
         android:layout_width="0dp"
@@ -658,7 +834,7 @@ cat << 'EOF' > app/src/main/res/layout/activity_main.xml
         app:layout_constraintBottom_toTopOf="@id/miniPlayer"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tabLayoutFilters"
+        app:layout_constraintTop_toBottomOf="@id/headerBar"
         tools:listitem="@layout/item_song" />
 
     <ProgressBar
@@ -668,7 +844,7 @@ cat << 'EOF' > app/src/main/res/layout/activity_main.xml
         app:layout_constraintBottom_toTopOf="@id/miniPlayer"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tabLayoutFilters" />
+        app:layout_constraintTop_toBottomOf="@id/headerBar" />
 
     <TextView
         android:id="@+id/textEmptyState"
@@ -683,7 +859,70 @@ cat << 'EOF' > app/src/main/res/layout/activity_main.xml
         app:layout_constraintBottom_toTopOf="@id/miniPlayer"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tabLayoutFilters" />
+        app:layout_constraintTop_toBottomOf="@id/headerBar" />
+
+    <!-- Écran vide des favoris : message explicatif + bouton vers l'onglet Titres -->
+    <LinearLayout
+        android:id="@+id/layoutEmptyFavorites"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="32dp"
+        android:layout_marginEnd="32dp"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/miniPlayer"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/headerBar">
+
+        <ImageView
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_favorite_border"
+            app:tint="?attr/colorOnSurfaceVariant" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center"
+            android:text="@string/favorites_empty_title"
+            android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="@string/favorites_empty_message"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textColor="?attr/colorOnSurfaceVariant" />
+
+        <Button
+            android:id="@+id/buttonExploreLibrary"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:minHeight="48dp"
+            android:text="@string/favorites_explore_button" />
+
+    </LinearLayout>
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabCreatePlaylist"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
+        android:contentDescription="@string/playlist_create_fab_description"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/miniPlayer"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:srcCompat="@drawable/ic_add"
+        app:tint="?attr/colorOnPrimaryContainer" />
 
     <include
         android:id="@+id/miniPlayer"
@@ -747,51 +986,64 @@ cat << 'EOF' > app/src/main/res/layout/layout_mini_player.xml
         android:max="100"
         app:trackThickness="2dp" />
 
+    <!-- Rangée 1 : titre et artiste, sur toute la largeur -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="16dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="16dp">
+
+        <TextView
+            android:id="@+id/textMiniTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="?attr/textAppearanceTitleSmall"
+            tools:text="Titre en cours de lecture" />
+
+        <TextView
+            android:id="@+id/textMiniArtist"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:visibility="gone"
+            tools:text="Artiste"
+            tools:visibility="visible" />
+
+    </LinearLayout>
+
+    <!-- Rangée 2 : aléatoire, précédent, lecture/pause, suivant, répétition, répartis sur la largeur -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
-        android:minHeight="64dp"
         android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingTop="4dp"
-        android:paddingEnd="12dp"
-        android:paddingBottom="4dp">
+        android:paddingStart="8dp"
+        android:paddingTop="2dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="6dp">
 
-        <LinearLayout
+        <ImageButton
+            android:id="@+id/buttonMiniShuffle"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp"
+            android:layout_height="48dp"
             android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/textMiniTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textAppearance="?attr/textAppearanceTitleSmall"
-                tools:text="Titre en cours de lecture" />
-
-            <TextView
-                android:id="@+id/textMiniArtist"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textAppearance="?attr/textAppearanceBodyMedium"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                android:visibility="gone"
-                tools:text="Artiste"
-                tools:visibility="visible" />
-
-        </LinearLayout>
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/mini_player_shuffle_description"
+            android:src="@drawable/ic_shuffle"
+            app:tint="@color/toggle_tint" />
 
         <ImageButton
             android:id="@+id/buttonMiniPrevious"
-            android:layout_width="48dp"
+            android:layout_width="0dp"
             android:layout_height="48dp"
+            android:layout_weight="1"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/mini_player_previous_description"
             android:src="@drawable/ic_skip_previous"
@@ -799,9 +1051,9 @@ cat << 'EOF' > app/src/main/res/layout/layout_mini_player.xml
 
         <ImageButton
             android:id="@+id/buttonMiniPlayPause"
-            android:layout_width="48dp"
+            android:layout_width="0dp"
             android:layout_height="48dp"
-            android:layout_marginStart="4dp"
+            android:layout_weight="1"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/mini_player_play_description"
             android:src="@drawable/ic_play_arrow"
@@ -809,13 +1061,23 @@ cat << 'EOF' > app/src/main/res/layout/layout_mini_player.xml
 
         <ImageButton
             android:id="@+id/buttonMiniNext"
-            android:layout_width="48dp"
+            android:layout_width="0dp"
             android:layout_height="48dp"
-            android:layout_marginStart="4dp"
+            android:layout_weight="1"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/mini_player_next_description"
             android:src="@drawable/ic_skip_next"
             app:tint="?attr/colorOnSurface" />
+
+        <ImageButton
+            android:id="@+id/buttonMiniRepeat"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/mini_player_repeat_description"
+            android:src="@drawable/ic_repeat"
+            app:tint="@color/toggle_tint" />
 
     </LinearLayout>
 
@@ -1036,6 +1298,8 @@ import android.net.Uri
  * @param albumId identifiant d'album MediaStore, utilisé pour retrouver la pochette.
  * @param dateAddedSeconds date d'ajout du fichier à l'appareil (secondes depuis 1970, colonne
  *   DATE_ADDED), utilisée par le tri « Date d'ajout ». 0 si inconnue.
+ * @param folderPath dossier parent d'origine (RELATIVE_PATH du MediaStore, ex. "Music/Afrobeat/") ;
+ *   chaîne vide si inconnu. Sert à regrouper les titres dans l'onglet Dossiers.
  */
 data class Song(
     val id: Long,
@@ -1045,7 +1309,8 @@ data class Song(
     val durationMs: Long,
     val contentUri: Uri,
     val albumId: Long,
-    val dateAddedSeconds: Long = 0L
+    val dateAddedSeconds: Long = 0L,
+    val folderPath: String = ""
 )
 EOF
 
@@ -1143,7 +1408,8 @@ class SongRepository(context: Context) {
                         durationMs = durationMs,
                         contentUri = contentUri,
                         albumId = albumId,
-                        dateAddedSeconds = dateAddedSeconds
+                        dateAddedSeconds = dateAddedSeconds,
+                        folderPath = path.orEmpty()
                     )
                 )
             }
@@ -1269,6 +1535,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlin.random.Random
 
 /** État de lecture exposé à l'interface (mini-lecteur). */
 data class PlaybackUiState(
@@ -1277,7 +1544,10 @@ data class PlaybackUiState(
     val title: String? = null,
     val artist: String? = null,
     val positionMs: Long = 0L,
-    val durationMs: Long = 0L
+    val durationMs: Long = 0L,
+    /** Un des Player.REPEAT_MODE_* : OFF, ALL (toute la liste) ou ONE (le titre en cours). */
+    val repeatMode: Int = Player.REPEAT_MODE_OFF,
+    val shuffleEnabled: Boolean = false
 )
 
 /**
@@ -1299,6 +1569,14 @@ class PlayerController(context: Context) {
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _state.update { it.copy(isPlaying = isPlaying) }
+        }
+
+        override fun onRepeatModeChanged(repeatMode: Int) {
+            _state.update { it.copy(repeatMode = repeatMode) }
+        }
+
+        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+            _state.update { it.copy(shuffleEnabled = shuffleModeEnabled) }
         }
 
         override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
@@ -1335,7 +1613,9 @@ class PlayerController(context: Context) {
                     title = mediaController.mediaMetadata.title?.toString(),
                     artist = mediaController.mediaMetadata.artist?.toString(),
                     positionMs = mediaController.currentPosition.coerceAtLeast(0L),
-                    durationMs = mediaController.duration.coerceAtLeast(0L)
+                    durationMs = mediaController.duration.coerceAtLeast(0L),
+                    repeatMode = mediaController.repeatMode,
+                    shuffleEnabled = mediaController.shuffleModeEnabled
                 )
             }
         }, MoreExecutors.directExecutor())
@@ -1355,6 +1635,42 @@ class PlayerController(context: Context) {
             setMediaItems(mediaItems, startIndex, 0L)
             prepare()
             play()
+        }
+    }
+
+    /**
+     * Lance la lecture de [mediaItems] en mode aléatoire, à partir d'un titre tiré au sort :
+     * active le mode aléatoire (le bouton du mini-lecteur passe à l'état actif) puis lit la liste.
+     */
+    fun playSongsShuffled(mediaItems: List<MediaItem>) {
+        if (mediaItems.isEmpty()) return
+        controller?.apply {
+            setShuffleModeEnabled(true)
+            setMediaItems(mediaItems, Random.nextInt(mediaItems.size), 0L)
+            prepare()
+            play()
+        }
+    }
+
+    /** Bascule le mode aléatoire (activé / désactivé). */
+    fun toggleShuffle() {
+        controller?.apply {
+            setShuffleModeEnabled(!shuffleModeEnabled)
+        }
+    }
+
+    /**
+     * Fait tourner le mode de répétition sur ses trois états :
+     * désactivé → toute la liste → le titre en cours → désactivé.
+     */
+    fun cycleRepeatMode() {
+        controller?.apply {
+            val next = when (repeatMode) {
+                Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                else -> Player.REPEAT_MODE_OFF
+            }
+            setRepeatMode(next)
         }
     }
 
@@ -1489,7 +1805,12 @@ package com.elg.music.ui.main
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.elg.music.R
 import com.elg.music.data.local.LibraryPreferences
+import com.elg.music.data.local.PlaylistStore
+import com.elg.music.data.model.FolderItem
+import com.elg.music.data.model.Playlist
+import com.elg.music.data.model.PlaylistSummary
 import com.elg.music.data.model.Song
 import com.elg.music.data.model.SortOrder
 import com.elg.music.data.repository.SongRepository
@@ -1506,32 +1827,65 @@ import java.text.Collator
 import java.util.Locale
 
 /**
- * Mode d'affichage sélectionné dans la barre d'onglets.
- * Seuls TITRES et FAVORIS ont une logique réelle pour cet incrément ; les autres onglets
- * (Artistes, Albums, Playlists, Dossiers) sont visibles mais annoncent "Bientôt disponible".
+ * Onglet sélectionné dans la barre de filtres.
+ * Artistes et Albums n'ont pas encore de logique : ils annoncent "Bientôt disponible".
  */
-enum class LibraryFilter { TITRES, FAVORIS }
+enum class LibraryFilter { TITRES, FAVORIS, PLAYLISTS, DOSSIERS }
+
+/** Écran réellement affiché : un onglet, ou le détail d'un dossier / d'une playlist ouvert(e). */
+enum class LibraryScreen { SONGS, FAVORITES, FOLDER_LIST, FOLDER_DETAIL, PLAYLIST_LIST, PLAYLIST_DETAIL }
+
+enum class CreatePlaylistResult { CREATED, EMPTY_NAME, DUPLICATE_NAME }
+
+enum class AddToPlaylistResult { ADDED, ALREADY_PRESENT }
 
 /**
  * État affiché par [com.elg.music.ui.main.MainActivity].
  *
- * [allSongs] est la bibliothèque complète (hors morceaux mis en liste noire), déjà triée selon
- * [sortOrder]. [visibleSongs] est la liste réellement affichée, après filtrage par [activeFilter]
- * et [searchQuery] ; le filtrage conserve l'ordre de tri.
+ * Champs de base : [allSongs] (bibliothèque complète, hors liste noire, déjà triée selon
+ * [sortOrder]), [playlists], [searchQuery], [activeFilter], [openFolderPath], [openPlaylistId].
+ *
+ * Champs dérivés (recalculés à chaque changement par le ViewModel) : [visibleSongs],
+ * [visibleFolders], [visiblePlaylists], [openFolder], [openPlaylist], [favoriteCount].
+ * Selon l'écran, seuls certains sont renseignés ; [visibleSongs] est toujours la liste de
+ * morceaux que touche l'utilisateur (Titres, Favoris, contenu d'un dossier ou d'une playlist).
  */
 data class LibraryUiState(
     val isLoading: Boolean = true,
     val allSongs: List<Song> = emptyList(),
-    val visibleSongs: List<Song> = emptyList(),
+    val playlists: List<Playlist> = emptyList(),
     val searchQuery: String = "",
     val activeFilter: LibraryFilter = LibraryFilter.TITRES,
-    val sortOrder: SortOrder = SortOrder.DEFAULT
-)
+    val sortOrder: SortOrder = SortOrder.DEFAULT,
+    val openFolderPath: String? = null,
+    val openPlaylistId: String? = null,
+    val visibleSongs: List<Song> = emptyList(),
+    val visibleFolders: List<FolderItem> = emptyList(),
+    val visiblePlaylists: List<PlaylistSummary> = emptyList(),
+    val openFolder: FolderItem? = null,
+    val openPlaylist: PlaylistSummary? = null,
+    val favoriteCount: Int = 0
+) {
+    val screen: LibraryScreen
+        get() = when (activeFilter) {
+            LibraryFilter.TITRES -> LibraryScreen.SONGS
+            LibraryFilter.FAVORIS -> LibraryScreen.FAVORITES
+            LibraryFilter.DOSSIERS ->
+                if (openFolderPath != null) LibraryScreen.FOLDER_DETAIL else LibraryScreen.FOLDER_LIST
+            LibraryFilter.PLAYLISTS ->
+                if (openPlaylistId != null) LibraryScreen.PLAYLIST_DETAIL else LibraryScreen.PLAYLIST_LIST
+        }
+
+    val isInDetailView: Boolean
+        get() = screen == LibraryScreen.FOLDER_DETAIL || screen == LibraryScreen.PLAYLIST_DETAIL
+}
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val appContext = application
     private val repository = SongRepository(application)
     private val libraryPreferences = LibraryPreferences(application)
+    private val playlistStore = PlaylistStore(application)
 
     private val _uiState = MutableStateFlow(LibraryUiState(sortOrder = libraryPreferences.getSortOrder()))
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
@@ -1552,10 +1906,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.update { current ->
                     val sortedSongs =
                         if (current.sortOrder == orderUsed) songs else sortSongs(songs, current.sortOrder)
-                    current.copy(
-                        isLoading = false,
-                        allSongs = sortedSongs,
-                        visibleSongs = applyFilters(sortedSongs, current.searchQuery, current.activeFilter)
+                    derive(
+                        current.copy(
+                            isLoading = false,
+                            allSongs = sortedSongs,
+                            playlists = loadPlaylists()
+                        )
                     )
                 }
             } catch (cancellation: CancellationException) {
@@ -1569,62 +1925,141 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     /** Arrête l'indicateur de chargement quand la bibliothèque ne peut pas être lue (permission refusée, erreur). */
     fun onLibraryUnavailable() {
         _uiState.update { current ->
-            current.copy(
-                isLoading = false,
-                allSongs = emptyList(),
-                visibleSongs = emptyList()
-            )
+            derive(current.copy(isLoading = false, allSongs = emptyList()))
         }
     }
 
     fun onSearchQueryChanged(query: String) {
-        _uiState.update { current ->
-            current.copy(
-                searchQuery = query,
-                visibleSongs = applyFilters(current.allSongs, query, current.activeFilter)
-            )
-        }
+        _uiState.update { current -> derive(current.copy(searchQuery = query)) }
     }
 
-    /** Change l'onglet actif (Titres/Favoris) et recalcule la liste visible en conséquence. */
+    /** Change d'onglet. Quitte au passage le détail d'un dossier ou d'une playlist éventuellement ouvert. */
     fun onFilterSelected(filter: LibraryFilter) {
         _uiState.update { current ->
-            current.copy(
-                activeFilter = filter,
-                visibleSongs = applyFilters(current.allSongs, current.searchQuery, filter)
-            )
+            if (filter == current.activeFilter) {
+                current
+            } else {
+                derive(
+                    current.copy(
+                        activeFilter = filter,
+                        openFolderPath = null,
+                        openPlaylistId = null
+                    )
+                )
+            }
         }
     }
 
     /**
      * Applique un nouveau critère de tri : l'enregistre pour les prochains lancements, retrie la
-     * bibliothèque et recalcule la liste visible. Sans effet si le critère est déjà actif.
+     * bibliothèque et recalcule les listes affichées. Sans effet si le critère est déjà actif.
      */
     fun onSortOrderSelected(order: SortOrder) {
         if (order == _uiState.value.sortOrder) return
         libraryPreferences.setSortOrder(order)
         _uiState.update { current ->
-            val sortedSongs = sortSongs(current.allSongs, order)
-            current.copy(
-                sortOrder = order,
-                allSongs = sortedSongs,
-                visibleSongs = applyFilters(sortedSongs, current.searchQuery, current.activeFilter)
-            )
+            derive(current.copy(sortOrder = order, allSongs = sortSongs(current.allSongs, order)))
         }
     }
+
+    // ===================== Dossiers =====================
+
+    fun openFolder(path: String) {
+        _uiState.update { current -> derive(current.copy(openFolderPath = path)) }
+    }
+
+    /** Revient de la vue détaillée (dossier ou playlist) à la liste de l'onglet. */
+    fun closeDetail() {
+        _uiState.update { current ->
+            derive(current.copy(openFolderPath = null, openPlaylistId = null))
+        }
+    }
+
+    // ===================== Favoris =====================
 
     fun isFavorite(song: Song): Boolean = libraryPreferences.isFavorite(song.contentUri)
 
     /** Bascule le statut favori, rafraîchit la vue (utile si l'onglet Favoris est actif), et renvoie le nouvel état. */
     fun toggleFavorite(song: Song): Boolean {
         val nowFavorite = libraryPreferences.toggleFavorite(song.contentUri)
-        _uiState.update { current ->
-            current.copy(
-                visibleSongs = applyFilters(current.allSongs, current.searchQuery, current.activeFilter)
-            )
-        }
+        _uiState.update { current -> derive(current) }
         return nowFavorite
     }
+
+    // ===================== Playlists =====================
+
+    fun openPlaylist(playlistId: String) {
+        _uiState.update { current -> derive(current.copy(openPlaylistId = playlistId)) }
+    }
+
+    /**
+     * Crée une playlist. Refuse un nom vide ou déjà utilisé (sans tenir compte de la casse).
+     * Si [songToAdd] est fourni, le morceau est ajouté d'emblée à la nouvelle playlist
+     * (création « à la volée » depuis le menu d'un titre).
+     */
+    fun createPlaylist(name: String, songToAdd: Song? = null): CreatePlaylistResult {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return CreatePlaylistResult.EMPTY_NAME
+        val nameTaken = _uiState.value.playlists.any { it.name.equals(trimmed, ignoreCase = true) }
+        if (nameTaken) return CreatePlaylistResult.DUPLICATE_NAME
+
+        val playlist = playlistStore.create(trimmed)
+        if (songToAdd != null) {
+            playlistStore.addSong(playlist.id, songToAdd.contentUri)
+        }
+        refreshPlaylists()
+        return CreatePlaylistResult.CREATED
+    }
+
+    fun addSongToPlaylist(playlistId: String, song: Song): AddToPlaylistResult {
+        val added = playlistStore.addSong(playlistId, song.contentUri)
+        refreshPlaylists()
+        return if (added) AddToPlaylistResult.ADDED else AddToPlaylistResult.ALREADY_PRESENT
+    }
+
+    /** Retire le morceau de la playlist actuellement ouverte. */
+    fun removeSongFromOpenPlaylist(song: Song) {
+        val playlistId = _uiState.value.openPlaylistId ?: return
+        playlistStore.removeSong(playlistId, song.contentUri)
+        refreshPlaylists()
+    }
+
+    fun deletePlaylist(playlistId: String) {
+        playlistStore.delete(playlistId)
+        _uiState.update { current ->
+            val stillOpen = if (current.openPlaylistId == playlistId) null else current.openPlaylistId
+            derive(current.copy(playlists = loadPlaylists(), openPlaylistId = stillOpen))
+        }
+    }
+
+    private fun refreshPlaylists() {
+        _uiState.update { current -> derive(current.copy(playlists = loadPlaylists())) }
+    }
+
+    private fun loadPlaylists(): List<Playlist> {
+        val collator = newCollator()
+        return playlistStore.getAll().sortedBy { collator.getCollationKey(it.name) }
+    }
+
+    // ===================== Lecture en série =====================
+
+    /**
+     * Morceaux lus par le bouton d'en-tête de l'écran courant, indépendamment de la recherche :
+     * tous les favoris, tout le dossier ouvert ou toute la playlist ouverte.
+     */
+    fun songsForBulkPlay(): List<Song> {
+        val state = _uiState.value
+        return when (state.screen) {
+            LibraryScreen.FAVORITES ->
+                state.allSongs.filter { libraryPreferences.isFavorite(it.contentUri) }
+            LibraryScreen.FOLDER_DETAIL ->
+                state.allSongs.filter { it.folderPath == state.openFolderPath }
+            LibraryScreen.PLAYLIST_DETAIL -> playlistSongs(state)
+            else -> emptyList()
+        }
+    }
+
+    // ===================== Actions sur les morceaux =====================
 
     /** Ajoute le morceau à la liste noire et le retire immédiatement de la vue. */
     fun blacklistSong(song: Song) {
@@ -1635,13 +2070,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     /** Retire le morceau de la bibliothèque affichée (par ex. après suppression physique confirmée). */
     fun removeSongLocally(song: Song) {
         _uiState.update { current ->
-            val updatedAll = current.allSongs.filterNot { it.id == song.id }
-            current.copy(
-                allSongs = updatedAll,
-                visibleSongs = applyFilters(updatedAll, current.searchQuery, current.activeFilter)
-            )
+            derive(current.copy(allSongs = current.allSongs.filterNot { it.id == song.id }))
         }
     }
+
+    // ===================== Calcul des listes affichées =====================
+
+    private fun newCollator(): Collator =
+        Collator.getInstance(Locale.getDefault()).apply { strength = Collator.SECONDARY }
 
     /**
      * Trie la bibliothèque. Le tri par titre ignore la casse et range les lettres accentuées
@@ -1652,7 +2088,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private fun sortSongs(songs: List<Song>, order: SortOrder): List<Song> {
         // Les clés de collation sont calculées une seule fois par morceau : comparer des clés
         // est bien plus rapide que de comparer les titres deux à deux sur une grosse bibliothèque.
-        val collator = Collator.getInstance(Locale.getDefault()).apply { strength = Collator.SECONDARY }
+        val collator = newCollator()
         val keyed = songs.map { KeyedSong(it, collator.getCollationKey(it.title)) }
         val sorted = when (order) {
             SortOrder.TITLE_ASC ->
@@ -1673,17 +2109,117 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     private class KeyedSong(val song: Song, val titleKey: CollationKey)
 
-    private fun applyFilters(songs: List<Song>, query: String, filter: LibraryFilter): List<Song> {
-        val base = when (filter) {
-            LibraryFilter.FAVORIS -> songs.filter { libraryPreferences.isFavorite(it.contentUri) }
-            LibraryFilter.TITRES -> songs
+    /**
+     * Recalcule tous les champs dérivés de [state] : c'est l'unique endroit qui décide quoi
+     * afficher selon l'onglet, le dossier / la playlist ouvert(e) et la recherche.
+     */
+    private fun derive(state: LibraryUiState): LibraryUiState {
+        val query = state.searchQuery.trim()
+        val songMatches: (Song) -> Boolean = { song ->
+            query.isEmpty() ||
+                song.title.contains(query, ignoreCase = true) ||
+                song.artist?.contains(query, ignoreCase = true) == true
         }
-        if (query.isBlank()) return base
-        val needle = query.trim()
-        return base.filter { song ->
-            song.title.contains(needle, ignoreCase = true) ||
-                song.artist?.contains(needle, ignoreCase = true) == true
+        val cleared = state.copy(
+            visibleSongs = emptyList(),
+            visibleFolders = emptyList(),
+            visiblePlaylists = emptyList(),
+            openFolder = null,
+            openPlaylist = null,
+            favoriteCount = 0
+        )
+
+        return when (state.activeFilter) {
+            LibraryFilter.TITRES ->
+                cleared.copy(visibleSongs = state.allSongs.filter(songMatches))
+
+            LibraryFilter.FAVORIS -> {
+                val favorites = state.allSongs.filter { libraryPreferences.isFavorite(it.contentUri) }
+                cleared.copy(
+                    visibleSongs = favorites.filter(songMatches),
+                    favoriteCount = favorites.size
+                )
+            }
+
+            LibraryFilter.DOSSIERS -> {
+                val folders = buildFolders(state.allSongs)
+                val open = state.openFolderPath?.let { path -> folders.firstOrNull { it.path == path } }
+                if (open != null) {
+                    cleared.copy(
+                        openFolder = open,
+                        visibleSongs = state.allSongs
+                            .filter { it.folderPath == open.path }
+                            .filter(songMatches)
+                    )
+                } else {
+                    // Aucun dossier ouvert (ou le dossier ouvert n'existe plus) : on montre la liste.
+                    cleared.copy(
+                        openFolderPath = null,
+                        visibleFolders = folders.filter { folder ->
+                            query.isEmpty() ||
+                                folder.name.contains(query, ignoreCase = true) ||
+                                folder.displayPath.contains(query, ignoreCase = true)
+                        }
+                    )
+                }
+            }
+
+            LibraryFilter.PLAYLISTS -> {
+                val byUri = state.allSongs.associateBy { it.contentUri.toString() }
+                val summaries = state.playlists.map { playlist ->
+                    PlaylistSummary(
+                        id = playlist.id,
+                        name = playlist.name,
+                        songCount = playlist.songUris.count { byUri.containsKey(it) },
+                        createdAtMs = playlist.createdAtMs
+                    )
+                }
+                val open = state.openPlaylistId?.let { id -> summaries.firstOrNull { it.id == id } }
+                if (open != null) {
+                    cleared.copy(
+                        openPlaylist = open,
+                        visibleSongs = playlistSongs(state).filter(songMatches)
+                    )
+                } else {
+                    cleared.copy(
+                        openPlaylistId = null,
+                        visiblePlaylists = summaries.filter { summary ->
+                            query.isEmpty() || summary.name.contains(query, ignoreCase = true)
+                        }
+                    )
+                }
+            }
         }
+    }
+
+    /** Morceaux de la playlist ouverte, dans l'ordre d'ajout, sans ceux qui ne sont plus dans la bibliothèque. */
+    private fun playlistSongs(state: LibraryUiState): List<Song> {
+        val playlist = state.playlists.firstOrNull { it.id == state.openPlaylistId } ?: return emptyList()
+        val byUri = state.allSongs.associateBy { it.contentUri.toString() }
+        return playlist.songUris.mapNotNull { byUri[it] }
+    }
+
+    /** Regroupe les morceaux par dossier parent ; dossiers triés par nom (sans tenir compte de la casse ni des accents). */
+    private fun buildFolders(songs: List<Song>): List<FolderItem> {
+        val collator = newCollator()
+        return songs
+            .groupBy { it.folderPath }
+            .map { (path, folderSongs) ->
+                val trimmed = path.trim('/')
+                FolderItem(
+                    path = path,
+                    name = if (trimmed.isEmpty()) {
+                        appContext.getString(R.string.folder_root_name)
+                    } else {
+                        trimmed.substringAfterLast('/')
+                    },
+                    displayPath = if (trimmed.isEmpty()) "/" else "/$trimmed/",
+                    songCount = folderSongs.size
+                )
+            }
+            .sortedWith(
+                compareBy<FolderItem> { collator.getCollationKey(it.name) }.thenBy { it.path }
+            )
     }
 }
 EOF
@@ -1766,6 +2302,7 @@ package com.elg.music.ui.main
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.RecoverableSecurityException
+import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -1774,26 +2311,37 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
 import android.widget.PopupMenu
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.widget.SearchView
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.updatePadding
+import androidx.core.widget.doOnTextChanged
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.elg.music.R
+import com.elg.music.data.model.Playlist
+import com.elg.music.data.model.PlaylistSummary
 import com.elg.music.data.model.Song
 import com.elg.music.data.model.SortOrder
 import com.elg.music.databinding.ActivityMainBinding
+import com.elg.music.databinding.DialogPlaylistNameBinding
 import com.elg.music.playback.PlaybackUiState
 import com.elg.music.playback.PlayerController
 import com.elg.music.ui.about.AboutDialog
@@ -1811,11 +2359,15 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var songAdapter: SongAdapter
+    private lateinit var folderAdapter: FolderAdapter
+    private lateinit var playlistAdapter: PlaylistAdapter
     private var progressJob: Job? = null
     private var seekHoldJob: Job? = null
     private var seekHoldTriggered = false
     private var pendingDeleteSong: Song? = null
     private var lastAppliedSortOrder: SortOrder? = null
+    private var lastScreen: LibraryScreen? = null
+    private var lastRepeatMode = -1
 
     private val libraryViewModel: LibraryViewModel by lazy {
         ViewModelProvider(
@@ -1825,6 +2377,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val playerController: PlayerController by lazy { PlayerController(this) }
+
+    /** Actif uniquement dans le détail d'un dossier ou d'une playlist : « retour » revient à la liste. */
+    private val detailBackCallback = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            libraryViewModel.closeDetail()
+        }
+    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -1856,11 +2415,15 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         binding.root.applySystemBarPadding()
         setSupportActionBar(binding.toolbar)
+        onBackPressedDispatcher.addCallback(this, detailBackCallback)
 
         setupRecyclerView()
         setupSearch()
         setupFilterTabs()
         setupSortButton()
+        setupHeader()
+        setupPlaylistFab()
+        setupEmptyFavorites()
         setupMiniPlayerControls()
         observeLibraryState()
         observePlayerState()
@@ -1939,12 +2502,19 @@ class MainActivity : AppCompatActivity() {
         ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
 
-    // ===================== Liste des morceaux =====================
+    // ===================== Listes (titres, dossiers, playlists) =====================
 
     private fun setupRecyclerView() {
         songAdapter = SongAdapter(
             onSongClicked = ::onSongClicked,
             onMenuClicked = ::showSongMenu
+        )
+        folderAdapter = FolderAdapter(
+            onFolderClicked = { folder -> libraryViewModel.openFolder(folder.path) }
+        )
+        playlistAdapter = PlaylistAdapter(
+            onPlaylistClicked = { playlist -> libraryViewModel.openPlaylist(playlist.id) },
+            onMenuClicked = ::showPlaylistMenu
         )
         binding.recyclerSongs.layoutManager = LinearLayoutManager(this)
         binding.recyclerSongs.adapter = songAdapter
@@ -1963,17 +2533,25 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Barre de filtres (Titres, Artistes, Albums, Playlists, Favoris, Dossiers).
-     * Seuls Titres (position 0) et Favoris (position 4) ont une logique réelle pour cet
-     * incrément ; les autres onglets restent visibles (conformément au cahier des charges)
-     * mais annoncent honnêtement qu'ils ne sont pas encore disponibles plutôt que de filtrer
-     * silencieusement de façon incorrecte.
+     * Artistes et Albums restent visibles (conformément au cahier des charges) mais annoncent
+     * honnêtement qu'ils ne sont pas encore disponibles plutôt que de filtrer silencieusement
+     * de façon incorrecte. Toucher de nouveau Playlists ou Dossiers depuis l'un de leurs
+     * détails revient à la liste.
      */
     private fun setupFilterTabs() {
+        // L'onglet sélectionné est resynchronisé avec l'état (utile après une rotation d'écran),
+        // avant d'écouter les changements pour ne pas déclencher d'action.
+        binding.tabLayoutFilters
+            .getTabAt(tabPositionFor(libraryViewModel.uiState.value.activeFilter))
+            ?.select()
+
         binding.tabLayoutFilters.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab) {
                 when (tab.position) {
                     TAB_POSITION_TITLES -> libraryViewModel.onFilterSelected(LibraryFilter.TITRES)
+                    TAB_POSITION_PLAYLISTS -> libraryViewModel.onFilterSelected(LibraryFilter.PLAYLISTS)
                     TAB_POSITION_FAVORITES -> libraryViewModel.onFilterSelected(LibraryFilter.FAVORIS)
+                    TAB_POSITION_FOLDERS -> libraryViewModel.onFilterSelected(LibraryFilter.DOSSIERS)
                     else -> Toast.makeText(
                         this@MainActivity,
                         R.string.filter_not_available_message,
@@ -1984,8 +2562,19 @@ class MainActivity : AppCompatActivity() {
 
             override fun onTabUnselected(tab: TabLayout.Tab) = Unit
 
-            override fun onTabReselected(tab: TabLayout.Tab) = Unit
+            override fun onTabReselected(tab: TabLayout.Tab) {
+                if (tab.position == TAB_POSITION_PLAYLISTS || tab.position == TAB_POSITION_FOLDERS) {
+                    libraryViewModel.closeDetail()
+                }
+            }
         })
+    }
+
+    private fun tabPositionFor(filter: LibraryFilter): Int = when (filter) {
+        LibraryFilter.TITRES -> TAB_POSITION_TITLES
+        LibraryFilter.PLAYLISTS -> TAB_POSITION_PLAYLISTS
+        LibraryFilter.FAVORIS -> TAB_POSITION_FAVORITES
+        LibraryFilter.DOSSIERS -> TAB_POSITION_FOLDERS
     }
 
     /**
@@ -2016,26 +2605,150 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    // ===================== En-tête contextuel, bouton + des playlists, favoris vides =====================
+
+    private fun setupHeader() {
+        binding.buttonHeaderBack.setOnClickListener { libraryViewModel.closeDetail() }
+        binding.buttonHeaderPrimary.setOnClickListener { onHeaderPrimaryClicked() }
+        binding.buttonHeaderSecondary.setOnClickListener {
+            libraryViewModel.uiState.value.openPlaylist?.let { playlist -> confirmDeletePlaylist(playlist) }
+        }
+    }
+
+    /**
+     * Bouton principal de l'en-tête : lecture aléatoire de tous les favoris, ou lecture dans
+     * l'ordre de tout le dossier / de toute la playlist ouvert(e).
+     */
+    private fun onHeaderPrimaryClicked() {
+        val songs = libraryViewModel.songsForBulkPlay()
+        if (songs.isEmpty()) return
+        val mediaItems = songs.map(::toMediaItem)
+        if (libraryViewModel.uiState.value.screen == LibraryScreen.FAVORITES) {
+            playerController.playSongsShuffled(mediaItems)
+        } else {
+            playerController.playSongs(mediaItems, 0)
+        }
+    }
+
+    private fun setupPlaylistFab() {
+        binding.fabCreatePlaylist.setOnClickListener { showCreatePlaylistDialog(songToAdd = null) }
+    }
+
+    private fun setupEmptyFavorites() {
+        binding.buttonExploreLibrary.setOnClickListener {
+            binding.tabLayoutFilters.getTabAt(TAB_POSITION_TITLES)?.select()
+        }
+    }
+
     private fun observeLibraryState() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 libraryViewModel.uiState.collect { state ->
-                    // Après un changement de tri, on revient en haut de la liste pour voir le nouvel ordre.
-                    val sortChanged =
-                        lastAppliedSortOrder != null && state.sortOrder != lastAppliedSortOrder
-                    lastAppliedSortOrder = state.sortOrder
-                    songAdapter.submitList(state.visibleSongs) {
-                        if (sortChanged) binding.recyclerSongs.scrollToPosition(0)
-                    }
-                    binding.progressLoading.visibility = if (state.isLoading) View.VISIBLE else View.GONE
-                    val isEmpty = !state.isLoading && state.visibleSongs.isEmpty()
-                    binding.textEmptyState.visibility = if (isEmpty) View.VISIBLE else View.GONE
-                    binding.recyclerSongs.visibility =
-                        if (isEmpty || state.isLoading) View.GONE else View.VISIBLE
+                    renderLibrary(state)
+                    renderHeader(state)
+                    detailBackCallback.isEnabled = state.isInDetailView
                 }
             }
         }
     }
+
+    private fun renderLibrary(state: LibraryUiState) {
+        val screen = state.screen
+
+        // Retour en haut de la liste après un changement de tri ou d'écran, pour voir le nouvel ordre.
+        val sortChanged = lastAppliedSortOrder != null && state.sortOrder != lastAppliedSortOrder
+        lastAppliedSortOrder = state.sortOrder
+        val screenChanged = lastScreen != null && screen != lastScreen
+        lastScreen = screen
+        val scrollToTop = Runnable {
+            if (sortChanged || screenChanged) binding.recyclerSongs.scrollToPosition(0)
+        }
+
+        val targetAdapter: RecyclerView.Adapter<*> = when (screen) {
+            LibraryScreen.FOLDER_LIST -> folderAdapter
+            LibraryScreen.PLAYLIST_LIST -> playlistAdapter
+            else -> songAdapter
+        }
+        if (binding.recyclerSongs.adapter !== targetAdapter) {
+            binding.recyclerSongs.adapter = targetAdapter
+        }
+        when (screen) {
+            LibraryScreen.FOLDER_LIST -> folderAdapter.submitList(state.visibleFolders, scrollToTop)
+            LibraryScreen.PLAYLIST_LIST -> playlistAdapter.submitList(state.visiblePlaylists, scrollToTop)
+            else -> songAdapter.submitList(state.visibleSongs, scrollToTop)
+        }
+
+        val isEmpty = when (screen) {
+            LibraryScreen.FOLDER_LIST -> state.visibleFolders.isEmpty()
+            LibraryScreen.PLAYLIST_LIST -> state.visiblePlaylists.isEmpty()
+            else -> state.visibleSongs.isEmpty()
+        }
+        val showFavoritesEmpty = !state.isLoading && isEmpty &&
+            screen == LibraryScreen.FAVORITES && state.searchQuery.isBlank()
+        val showTextEmpty = !state.isLoading && isEmpty && !showFavoritesEmpty
+
+        binding.progressLoading.visibility = if (state.isLoading) View.VISIBLE else View.GONE
+        binding.layoutEmptyFavorites.visibility = if (showFavoritesEmpty) View.VISIBLE else View.GONE
+        binding.textEmptyState.visibility = if (showTextEmpty) View.VISIBLE else View.GONE
+        if (showTextEmpty) {
+            binding.textEmptyState.setText(emptyMessageFor(state))
+        }
+        binding.recyclerSongs.visibility = if (isEmpty || state.isLoading) View.GONE else View.VISIBLE
+
+        // Bouton flottant « + » : uniquement sur la liste des playlists (et la liste ne passe pas dessous).
+        val showFab = screen == LibraryScreen.PLAYLIST_LIST && !state.isLoading
+        if (showFab) binding.fabCreatePlaylist.show() else binding.fabCreatePlaylist.hide()
+        val bottomPaddingDp = if (screen == LibraryScreen.PLAYLIST_LIST) LIST_PADDING_WITH_FAB_DP else LIST_PADDING_DP
+        binding.recyclerSongs.updatePadding(bottom = dpToPx(bottomPaddingDp))
+    }
+
+    private fun emptyMessageFor(state: LibraryUiState): Int = when {
+        state.screen == LibraryScreen.SONGS -> R.string.main_placeholder_message
+        state.searchQuery.isNotBlank() -> R.string.empty_search_message
+        state.screen == LibraryScreen.FOLDER_LIST -> R.string.empty_folders_message
+        state.screen == LibraryScreen.PLAYLIST_LIST -> R.string.empty_playlists_message
+        state.screen == LibraryScreen.PLAYLIST_DETAIL -> R.string.empty_playlist_detail_message
+        else -> R.string.main_placeholder_message
+    }
+
+    private fun renderHeader(state: LibraryUiState) {
+        val screen = state.screen
+        val folder = state.openFolder
+        val playlist = state.openPlaylist
+
+        val showFavoritesHeader = screen == LibraryScreen.FAVORITES && !state.isLoading && state.favoriteCount > 0
+        val showFolderHeader = screen == LibraryScreen.FOLDER_DETAIL && folder != null
+        val showPlaylistHeader = screen == LibraryScreen.PLAYLIST_DETAIL && playlist != null
+        val showDetailHeader = showFolderHeader || showPlaylistHeader
+
+        binding.headerBar.visibility =
+            if (showFavoritesHeader || showDetailHeader) View.VISIBLE else View.GONE
+        binding.layoutHeaderTitleRow.visibility = if (showDetailHeader) View.VISIBLE else View.GONE
+        binding.buttonHeaderSecondary.visibility = if (showPlaylistHeader) View.VISIBLE else View.GONE
+
+        if (showFavoritesHeader) {
+            binding.buttonHeaderPrimary.setText(R.string.favorites_shuffle_all)
+            binding.buttonHeaderPrimary.visibility = View.VISIBLE
+        }
+        if (folder != null && showFolderHeader) {
+            val countText = resources.getQuantityString(R.plurals.song_count, folder.songCount, folder.songCount)
+            binding.textHeaderTitle.text = folder.name
+            binding.textHeaderSubtitle.text =
+                getString(R.string.folder_details_format, countText, folder.displayPath)
+            binding.buttonHeaderPrimary.setText(R.string.folder_play_all)
+            binding.buttonHeaderPrimary.visibility = View.VISIBLE
+        }
+        if (playlist != null && showPlaylistHeader) {
+            binding.textHeaderTitle.text = playlist.name
+            binding.textHeaderSubtitle.text =
+                resources.getQuantityString(R.plurals.song_count, playlist.songCount, playlist.songCount)
+            binding.buttonHeaderPrimary.setText(R.string.playlist_play_all)
+            binding.buttonHeaderPrimary.visibility =
+                if (playlist.songCount > 0) View.VISIBLE else View.GONE
+        }
+    }
+
+    private fun dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
 
     private fun onSongClicked(song: Song) {
         val songs = libraryViewModel.uiState.value.visibleSongs
@@ -2072,6 +2785,9 @@ class MainActivity : AppCompatActivity() {
                 R.string.song_menu_add_favorite
             }
         )
+        // « Retirer de cette playlist » n'a de sens que dans le détail d'une playlist.
+        popup.menu.findItem(R.id.action_remove_from_playlist).isVisible =
+            libraryViewModel.uiState.value.screen == LibraryScreen.PLAYLIST_DETAIL
 
         popup.setOnMenuItemClickListener { item ->
             when (item.itemId) {
@@ -2080,6 +2796,14 @@ class MainActivity : AppCompatActivity() {
                     val messageRes =
                         if (nowFavorite) R.string.favorite_added_message else R.string.favorite_removed_message
                     Toast.makeText(this, getString(messageRes, song.title), Toast.LENGTH_SHORT).show()
+                    true
+                }
+                R.id.action_add_to_playlist -> {
+                    showAddToPlaylistDialog(song)
+                    true
+                }
+                R.id.action_remove_from_playlist -> {
+                    removeSongFromOpenPlaylist(song)
                     true
                 }
                 R.id.action_hide_song -> {
@@ -2137,10 +2861,144 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ===================== Playlists : création, ajout, retrait, suppression =====================
+
+    /**
+     * « Ajouter à une playlist… » : propose « Nouvelle playlist… » puis les playlists existantes.
+     * S'il n'en existe encore aucune, ouvre directement la création.
+     */
+    private fun showAddToPlaylistDialog(song: Song) {
+        val playlists = libraryViewModel.uiState.value.playlists
+        if (playlists.isEmpty()) {
+            showCreatePlaylistDialog(songToAdd = song)
+            return
+        }
+        val labels = arrayOf(getString(R.string.playlist_add_new_option)) + playlists.map { it.name }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.playlist_add_dialog_title)
+            .setItems(labels) { _, which ->
+                if (which == 0) {
+                    showCreatePlaylistDialog(songToAdd = song)
+                } else {
+                    addSongToPlaylist(playlists[which - 1], song)
+                }
+            }
+            .setNegativeButton(R.string.delete_dialog_cancel, null)
+            .show()
+    }
+
+    private fun addSongToPlaylist(playlist: Playlist, song: Song) {
+        val messageRes = when (libraryViewModel.addSongToPlaylist(playlist.id, song)) {
+            AddToPlaylistResult.ADDED -> R.string.playlist_song_added_message
+            AddToPlaylistResult.ALREADY_PRESENT -> R.string.playlist_song_already_message
+        }
+        Toast.makeText(this, getString(messageRes, song.title, playlist.name), Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * Dialogue « Nouvelle playlist ». Le nom est validé sans fermer le dialogue : un nom vide ou
+     * déjà pris affiche l'erreur sous le champ. Si [songToAdd] est fourni, le morceau est ajouté
+     * d'emblée à la playlist créée.
+     */
+    private fun showCreatePlaylistDialog(songToAdd: Song?) {
+        val dialogBinding = DialogPlaylistNameBinding.inflate(layoutInflater)
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.playlist_create_title)
+            .setView(dialogBinding.root)
+            .setPositiveButton(R.string.playlist_create_confirm, null)
+            .setNegativeButton(R.string.delete_dialog_cancel, null)
+            .create()
+
+        dialog.setOnShowListener {
+            val createButton = dialog.getButton(DialogInterface.BUTTON_POSITIVE)
+            fun submit() {
+                val name = dialogBinding.editPlaylistName.text?.toString().orEmpty()
+                when (libraryViewModel.createPlaylist(name, songToAdd)) {
+                    CreatePlaylistResult.CREATED -> {
+                        dialog.dismiss()
+                        val messageRes =
+                            if (songToAdd != null) R.string.playlist_created_with_song_message
+                            else R.string.playlist_created_message
+                        val message = if (songToAdd != null) {
+                            getString(messageRes, name.trim(), songToAdd.title)
+                        } else {
+                            getString(messageRes, name.trim())
+                        }
+                        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                    }
+                    CreatePlaylistResult.EMPTY_NAME ->
+                        dialogBinding.inputLayoutPlaylistName.error =
+                            getString(R.string.playlist_name_error_empty)
+                    CreatePlaylistResult.DUPLICATE_NAME ->
+                        dialogBinding.inputLayoutPlaylistName.error =
+                            getString(R.string.playlist_name_error_duplicate)
+                }
+            }
+            createButton.setOnClickListener { submit() }
+            dialogBinding.editPlaylistName.doOnTextChanged { _, _, _, _ ->
+                dialogBinding.inputLayoutPlaylistName.error = null
+            }
+            dialogBinding.editPlaylistName.setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_DONE) {
+                    submit()
+                    true
+                } else {
+                    false
+                }
+            }
+            dialogBinding.editPlaylistName.requestFocus()
+            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        }
+        dialog.show()
+    }
+
+    private fun removeSongFromOpenPlaylist(song: Song) {
+        val playlistName = libraryViewModel.uiState.value.openPlaylist?.name ?: return
+        libraryViewModel.removeSongFromOpenPlaylist(song)
+        Toast.makeText(
+            this,
+            getString(R.string.playlist_song_removed_message, song.title, playlistName),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    private fun showPlaylistMenu(playlist: PlaylistSummary, anchor: View) {
+        val popup = PopupMenu(this, anchor)
+        popup.menuInflater.inflate(R.menu.menu_playlist_item, popup.menu)
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.action_delete_playlist -> {
+                    confirmDeletePlaylist(playlist)
+                    true
+                }
+                else -> false
+            }
+        }
+        popup.show()
+    }
+
+    private fun confirmDeletePlaylist(playlist: PlaylistSummary) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.playlist_delete_dialog_title)
+            .setMessage(getString(R.string.playlist_delete_dialog_message, playlist.name))
+            .setPositiveButton(R.string.delete_dialog_confirm) { _, _ ->
+                libraryViewModel.deletePlaylist(playlist.id)
+                Toast.makeText(
+                    this,
+                    getString(R.string.playlist_deleted_message, playlist.name),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            .setNegativeButton(R.string.delete_dialog_cancel, null)
+            .show()
+    }
+
     // ===================== Mini-lecteur =====================
 
     private fun setupMiniPlayerControls() {
         binding.miniPlayer.buttonMiniPlayPause.setOnClickListener { playerController.togglePlayPause() }
+        binding.miniPlayer.buttonMiniShuffle.setOnClickListener { playerController.toggleShuffle() }
+        binding.miniPlayer.buttonMiniRepeat.setOnClickListener { playerController.cycleRepeatMode() }
         setupHoldToSeek(binding.miniPlayer.buttonMiniPrevious, isForward = false)
         setupHoldToSeek(binding.miniPlayer.buttonMiniNext, isForward = true)
     }
@@ -2220,15 +3078,54 @@ class MainActivity : AppCompatActivity() {
             if (state.isPlaying) R.string.mini_player_pause_description else R.string.mini_player_play_description
         )
 
+        updateShuffleAndRepeatButtons(state)
+
         if (state.durationMs > 0) {
             binding.miniPlayer.progressMini.max = state.durationMs.toInt()
             binding.miniPlayer.progressMini.setProgressCompat(state.positionMs.toInt(), true)
         }
     }
 
+    /**
+     * Retour visuel immédiat : un bouton actif est teinté à la couleur d'accent (état « selected »
+     * lu par `toggle_tint`), et TalkBack annonce l'état (Activée / Désactivée, Toute la liste /
+     * Ce titre) en plus du nom du bouton.
+     */
+    private fun updateShuffleAndRepeatButtons(state: PlaybackUiState) {
+        val shuffleButton = binding.miniPlayer.buttonMiniShuffle
+        shuffleButton.isSelected = state.shuffleEnabled
+        ViewCompat.setStateDescription(
+            shuffleButton,
+            getString(if (state.shuffleEnabled) R.string.state_on else R.string.state_off)
+        )
+
+        // Le reste ne change que quand le mode de répétition change : inutile de le refaire à chaque tick.
+        if (state.repeatMode == lastRepeatMode) return
+        lastRepeatMode = state.repeatMode
+        val repeatButton = binding.miniPlayer.buttonMiniRepeat
+        repeatButton.isSelected = state.repeatMode != Player.REPEAT_MODE_OFF
+        repeatButton.setImageResource(
+            if (state.repeatMode == Player.REPEAT_MODE_ONE) R.drawable.ic_repeat_one else R.drawable.ic_repeat
+        )
+        ViewCompat.setStateDescription(
+            repeatButton,
+            getString(
+                when (state.repeatMode) {
+                    Player.REPEAT_MODE_ALL -> R.string.state_repeat_all
+                    Player.REPEAT_MODE_ONE -> R.string.state_repeat_one
+                    else -> R.string.state_off
+                }
+            )
+        )
+    }
+
     private companion object {
         private const val TAB_POSITION_TITLES = 0
+        private const val TAB_POSITION_PLAYLISTS = 3
         private const val TAB_POSITION_FAVORITES = 4
+        private const val TAB_POSITION_FOLDERS = 5
+        private const val LIST_PADDING_DP = 8
+        private const val LIST_PADDING_WITH_FAB_DP = 88
         private const val LONG_PRESS_THRESHOLD_MS = 500L
         private const val SEEK_STEP_MS = 5000L
         private const val SEEK_REPEAT_INTERVAL_MS = 400L
@@ -2753,8 +3650,690 @@ cat << 'EOF' > app/src/main/res/drawable/ic_artwork_default.xml
 </vector>
 EOF
 
+echo "  -> app/src/main/java/com/elg/music/data/local/PlaylistStore.kt"
+mkdir -p app/src/main/java/com/elg/music/data/local
+cat << 'EOF' > app/src/main/java/com/elg/music/data/local/PlaylistStore.kt
+package com.elg.music.data.local
+
+import android.content.Context
+import android.net.Uri
+import com.elg.music.data.model.Playlist
+import org.json.JSONArray
+import org.json.JSONException
+import org.json.JSONObject
+import java.util.UUID
+
+/**
+ * Enregistre les playlists de l'utilisateur en JSON dans des SharedPreferences dédiées.
+ *
+ * Format : un tableau d'objets {"id", "name", "createdAt", "songs": [uri, ...]}. Chaque morceau
+ * est identifié par la chaîne de son Uri MediaStore, comme les favoris et la liste noire de
+ * [LibraryPreferences]. Toutes les méthodes sont synchronisées : l'état enregistré reste cohérent
+ * même si plusieurs écrans y accèdent.
+ */
+class PlaylistStore(context: Context) {
+
+    private val prefs = context.applicationContext.getSharedPreferences(
+        PREFS_NAME,
+        Context.MODE_PRIVATE
+    )
+
+    @Synchronized
+    fun getAll(): List<Playlist> = readAll()
+
+    /** Crée une playlist vide. Le nom doit déjà avoir été validé (non vide, non dupliqué). */
+    @Synchronized
+    fun create(name: String): Playlist {
+        val playlist = Playlist(
+            id = UUID.randomUUID().toString(),
+            name = name.trim(),
+            createdAtMs = System.currentTimeMillis(),
+            songUris = emptyList()
+        )
+        writeAll(readAll() + playlist)
+        return playlist
+    }
+
+    @Synchronized
+    fun delete(playlistId: String) {
+        writeAll(readAll().filterNot { it.id == playlistId })
+    }
+
+    /** Ajoute un morceau à la fin de la playlist. Renvoie false s'il y est déjà (ou si la playlist n'existe plus). */
+    @Synchronized
+    fun addSong(playlistId: String, songUri: Uri): Boolean {
+        val playlists = readAll()
+        val index = playlists.indexOfFirst { it.id == playlistId }
+        if (index == -1) return false
+        val key = songUri.toString()
+        val playlist = playlists[index]
+        if (playlist.songUris.contains(key)) return false
+        val updated = playlists.toMutableList()
+        updated[index] = playlist.copy(songUris = playlist.songUris + key)
+        writeAll(updated)
+        return true
+    }
+
+    @Synchronized
+    fun removeSong(playlistId: String, songUri: Uri) {
+        val key = songUri.toString()
+        writeAll(
+            readAll().map { playlist ->
+                if (playlist.id == playlistId) {
+                    playlist.copy(songUris = playlist.songUris.filterNot { it == key })
+                } else {
+                    playlist
+                }
+            }
+        )
+    }
+
+    private fun readAll(): List<Playlist> {
+        val raw = prefs.getString(KEY_PLAYLISTS, null) ?: return emptyList()
+        return try {
+            val array = JSONArray(raw)
+            val result = ArrayList<Playlist>(array.length())
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                val songsJson = item.optJSONArray(FIELD_SONGS) ?: JSONArray()
+                val uris = ArrayList<String>(songsJson.length())
+                for (j in 0 until songsJson.length()) {
+                    uris.add(songsJson.getString(j))
+                }
+                result.add(
+                    Playlist(
+                        id = item.getString(FIELD_ID),
+                        name = item.getString(FIELD_NAME),
+                        createdAtMs = item.optLong(FIELD_CREATED_AT, 0L),
+                        songUris = uris
+                    )
+                )
+            }
+            result
+        } catch (invalidJson: JSONException) {
+            emptyList()
+        }
+    }
+
+    private fun writeAll(playlists: List<Playlist>) {
+        val array = JSONArray()
+        for (playlist in playlists) {
+            val item = JSONObject()
+            item.put(FIELD_ID, playlist.id)
+            item.put(FIELD_NAME, playlist.name)
+            item.put(FIELD_CREATED_AT, playlist.createdAtMs)
+            val songs = JSONArray()
+            for (uri in playlist.songUris) {
+                songs.put(uri)
+            }
+            item.put(FIELD_SONGS, songs)
+            array.put(item)
+        }
+        prefs.edit().putString(KEY_PLAYLISTS, array.toString()).apply()
+    }
+
+    private companion object {
+        const val PREFS_NAME = "elg_music_playlists"
+        const val KEY_PLAYLISTS = "playlists_json"
+        const val FIELD_ID = "id"
+        const val FIELD_NAME = "name"
+        const val FIELD_CREATED_AT = "createdAt"
+        const val FIELD_SONGS = "songs"
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/data/model/FolderItem.kt"
+mkdir -p app/src/main/java/com/elg/music/data/model
+cat << 'EOF' > app/src/main/java/com/elg/music/data/model/FolderItem.kt
+package com.elg.music.data.model
+
+/**
+ * Dossier physique contenant de la musique, tel que déduit du champ RELATIVE_PATH du MediaStore.
+ *
+ * @param path chemin relatif brut (ex. "Music/Afrobeat/"), identifiant unique du dossier ;
+ *   chaîne vide pour la racine du stockage.
+ * @param name nom affiché : dernier segment du chemin (ex. "Afrobeat").
+ * @param displayPath chemin affiché, précédé d'une barre oblique (ex. "/Music/Afrobeat/").
+ * @param songCount nombre de titres de la bibliothèque contenus dans ce dossier.
+ */
+data class FolderItem(
+    val path: String,
+    val name: String,
+    val displayPath: String,
+    val songCount: Int
+)
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/data/model/Playlist.kt"
+mkdir -p app/src/main/java/com/elg/music/data/model
+cat << 'EOF' > app/src/main/java/com/elg/music/data/model/Playlist.kt
+package com.elg.music.data.model
+
+/**
+ * Playlist telle qu'enregistrée sur l'appareil.
+ *
+ * @param id identifiant unique (UUID), stable même si la playlist est renommée un jour.
+ * @param name nom choisi par l'utilisateur.
+ * @param createdAtMs date de création (millisecondes depuis 1970).
+ * @param songUris morceaux dans l'ordre d'ajout, identifiés par la chaîne de leur Uri MediaStore
+ *   (même convention que les favoris et la liste noire).
+ */
+data class Playlist(
+    val id: String,
+    val name: String,
+    val createdAtMs: Long,
+    val songUris: List<String>
+)
+
+/**
+ * Vue d'une playlist pour l'affichage : [songCount] ne compte que les morceaux actuellement
+ * présents dans la bibliothèque (un fichier supprimé ou masqué n'est pas compté).
+ */
+data class PlaylistSummary(
+    val id: String,
+    val name: String,
+    val songCount: Int,
+    val createdAtMs: Long
+)
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/ui/main/FolderAdapter.kt"
+mkdir -p app/src/main/java/com/elg/music/ui/main
+cat << 'EOF' > app/src/main/java/com/elg/music/ui/main/FolderAdapter.kt
+package com.elg.music.ui.main
+
+import android.view.LayoutInflater
+import android.view.ViewGroup
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
+import com.elg.music.R
+import com.elg.music.data.model.FolderItem
+import com.elg.music.databinding.ItemFolderBinding
+
+/**
+ * Liste des dossiers de l'onglet Dossiers : nom, nombre de titres et chemin relatif.
+ *
+ * @param onFolderClicked appelé quand l'utilisateur touche un dossier (ouverture de son contenu).
+ */
+class FolderAdapter(
+    private val onFolderClicked: (FolderItem) -> Unit
+) : ListAdapter<FolderItem, FolderAdapter.FolderViewHolder>(FolderDiffCallback()) {
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): FolderViewHolder {
+        val binding = ItemFolderBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+        return FolderViewHolder(binding)
+    }
+
+    override fun onBindViewHolder(holder: FolderViewHolder, position: Int) {
+        holder.bind(getItem(position))
+    }
+
+    inner class FolderViewHolder(private val binding: ItemFolderBinding) :
+        RecyclerView.ViewHolder(binding.root) {
+
+        fun bind(folder: FolderItem) {
+            val context = binding.root.context
+            val countText = context.resources.getQuantityString(
+                R.plurals.song_count,
+                folder.songCount,
+                folder.songCount
+            )
+            binding.textFolderName.text = folder.name
+            binding.textFolderDetails.text =
+                context.getString(R.string.folder_details_format, countText, folder.displayPath)
+            binding.root.contentDescription =
+                context.getString(R.string.folder_row_content_description, folder.name, countText)
+            binding.root.setOnClickListener { onFolderClicked(folder) }
+        }
+    }
+
+    private class FolderDiffCallback : DiffUtil.ItemCallback<FolderItem>() {
+        override fun areItemsTheSame(oldItem: FolderItem, newItem: FolderItem): Boolean =
+            oldItem.path == newItem.path
+
+        override fun areContentsTheSame(oldItem: FolderItem, newItem: FolderItem): Boolean =
+            oldItem == newItem
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/ui/main/PlaylistAdapter.kt"
+mkdir -p app/src/main/java/com/elg/music/ui/main
+cat << 'EOF' > app/src/main/java/com/elg/music/ui/main/PlaylistAdapter.kt
+package com.elg.music.ui.main
+
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
+import com.elg.music.R
+import com.elg.music.data.model.PlaylistSummary
+import com.elg.music.databinding.ItemPlaylistBinding
+import java.text.DateFormat
+import java.util.Date
+
+/**
+ * Liste des playlists de l'onglet Playlists : nom, nombre de titres et date de création.
+ *
+ * @param onPlaylistClicked appelé quand l'utilisateur touche la ligne (ouverture de la playlist).
+ * @param onMenuClicked appelé quand l'utilisateur touche le bouton "..." (options de la playlist).
+ */
+class PlaylistAdapter(
+    private val onPlaylistClicked: (PlaylistSummary) -> Unit,
+    private val onMenuClicked: (PlaylistSummary, View) -> Unit
+) : ListAdapter<PlaylistSummary, PlaylistAdapter.PlaylistViewHolder>(PlaylistDiffCallback()) {
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PlaylistViewHolder {
+        val binding = ItemPlaylistBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+        return PlaylistViewHolder(binding)
+    }
+
+    override fun onBindViewHolder(holder: PlaylistViewHolder, position: Int) {
+        holder.bind(getItem(position))
+    }
+
+    inner class PlaylistViewHolder(private val binding: ItemPlaylistBinding) :
+        RecyclerView.ViewHolder(binding.root) {
+
+        fun bind(playlist: PlaylistSummary) {
+            val context = binding.root.context
+            val countText = context.resources.getQuantityString(
+                R.plurals.song_count,
+                playlist.songCount,
+                playlist.songCount
+            )
+            val dateText = DateFormat.getDateInstance(DateFormat.MEDIUM)
+                .format(Date(playlist.createdAtMs))
+
+            binding.textPlaylistName.text = playlist.name
+            binding.textPlaylistDetails.text =
+                context.getString(R.string.playlist_row_details_format, countText, dateText)
+            binding.root.contentDescription =
+                context.getString(R.string.playlist_row_content_description, playlist.name, countText)
+            binding.buttonPlaylistMenu.contentDescription =
+                context.getString(R.string.playlist_menu_button_description, playlist.name)
+
+            binding.root.setOnClickListener { onPlaylistClicked(playlist) }
+            binding.buttonPlaylistMenu.setOnClickListener { anchor -> onMenuClicked(playlist, anchor) }
+        }
+    }
+
+    private class PlaylistDiffCallback : DiffUtil.ItemCallback<PlaylistSummary>() {
+        override fun areItemsTheSame(oldItem: PlaylistSummary, newItem: PlaylistSummary): Boolean =
+            oldItem.id == newItem.id
+
+        override fun areContentsTheSame(oldItem: PlaylistSummary, newItem: PlaylistSummary): Boolean =
+            oldItem == newItem
+    }
+}
+EOF
+
+echo "  -> app/src/main/res/color/toggle_tint.xml"
+mkdir -p app/src/main/res/color
+cat << 'EOF' > app/src/main/res/color/toggle_tint.xml
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Teinte des boutons à bascule du mini-lecteur (aléatoire, répétition) :
+     couleur d'accent quand le mode est actif (état "selected"), couleur discrète sinon. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="?attr/colorPrimary" android:state_selected="true" />
+    <item android:color="?attr/colorOnSurfaceVariant" />
+</selector>
+EOF
+
+echo "  -> app/src/main/res/drawable/ic_add.xml"
+mkdir -p app/src/main/res/drawable
+cat << 'EOF' > app/src/main/res/drawable/ic_add.xml
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M19,13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+</vector>
+EOF
+
+echo "  -> app/src/main/res/drawable/ic_arrow_back.xml"
+mkdir -p app/src/main/res/drawable
+cat << 'EOF' > app/src/main/res/drawable/ic_arrow_back.xml
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M20,11H7.83l5.59,-5.59L12,4l-8,8 8,8 1.41,-1.41L7.83,13H20v-2z" />
+</vector>
+EOF
+
+echo "  -> app/src/main/res/drawable/ic_favorite_border.xml"
+mkdir -p app/src/main/res/drawable
+cat << 'EOF' > app/src/main/res/drawable/ic_favorite_border.xml
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M16.5,3c-1.74,0 -3.41,0.81 -4.5,2.09C10.91,3.81 9.24,3 7.5,3 4.42,3 2,5.42 2,8.5c0,3.78 3.4,6.86 8.55,11.54L12,21.35l1.45,-1.32C18.6,15.36 22,12.28 22,8.5 22,5.42 19.58,3 16.5,3zM12.1,18.55l-0.1,0.1 -0.1,-0.1C7.14,14.24 4,11.39 4,8.5 4,6.5 5.5,5 7.5,5c1.54,0 3.04,0.99 3.57,2.36h1.87C13.46,5.99 14.96,5 16.5,5c2,0 3.5,1.5 3.5,3.5 0,2.89 -3.14,5.74 -7.9,10.05z" />
+</vector>
+EOF
+
+echo "  -> app/src/main/res/drawable/ic_folder.xml"
+mkdir -p app/src/main/res/drawable
+cat << 'EOF' > app/src/main/res/drawable/ic_folder.xml
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M10,4H4c-1.1,0 -1.99,0.9 -1.99,2L2,18c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V8c0,-1.1 -0.9,-2 -2,-2h-8l-2,-2z" />
+</vector>
+EOF
+
+echo "  -> app/src/main/res/drawable/ic_playlist.xml"
+mkdir -p app/src/main/res/drawable
+cat << 'EOF' > app/src/main/res/drawable/ic_playlist.xml
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M15,6H3v2h12V6zM15,10H3v2h12v-2zM3,16h8v-2H3v2zM17,6v8.18c-0.31,-0.11 -0.65,-0.18 -1,-0.18 -1.66,0 -3,1.34 -3,3s1.34,3 3,3 3,-1.34 3,-3V8h3V6h-5z" />
+</vector>
+EOF
+
+echo "  -> app/src/main/res/drawable/ic_repeat.xml"
+mkdir -p app/src/main/res/drawable
+cat << 'EOF' > app/src/main/res/drawable/ic_repeat.xml
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M7,7h10v3l4,-4 -4,-4v3L5,5v6h2L7,7zM17,17L7,17v-3l-4,4 4,4v-3h12v-6h-2v4z" />
+</vector>
+EOF
+
+echo "  -> app/src/main/res/drawable/ic_repeat_one.xml"
+mkdir -p app/src/main/res/drawable
+cat << 'EOF' > app/src/main/res/drawable/ic_repeat_one.xml
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M7,7h10v3l4,-4 -4,-4v3L5,5v6h2L7,7zM17,17L7,17v-3l-4,4 4,4v-3h12v-6h-2v4zM13,15L13,9h-1l-2,1v1h1.5v4L13,15z" />
+</vector>
+EOF
+
+echo "  -> app/src/main/res/drawable/ic_shuffle.xml"
+mkdir -p app/src/main/res/drawable
+cat << 'EOF' > app/src/main/res/drawable/ic_shuffle.xml
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M10.59,9.17L5.41,4 4,5.41l5.17,5.17 1.42,-1.41zM14.5,4l2.04,2.04L4,18.59 5.41,20 17.96,7.46 20,9.5L20,4h-5.5zM14.83,13.41l-1.41,1.41 3.13,3.13L14.5,20L20,20v-5.5l-2.04,2.04 -3.13,-3.13z" />
+</vector>
+EOF
+
+echo "  -> app/src/main/res/layout/dialog_playlist_name.xml"
+mkdir -p app/src/main/res/layout
+cat << 'EOF' > app/src/main/res/layout/dialog_playlist_name.xml
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingStart="24dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="24dp">
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/inputLayoutPlaylistName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/playlist_name_hint">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/editPlaylistName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:imeOptions="actionDone"
+            android:inputType="textCapSentences"
+            android:maxLength="60"
+            android:maxLines="1" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+</FrameLayout>
+EOF
+
+echo "  -> app/src/main/res/layout/item_folder.xml"
+mkdir -p app/src/main/res/layout
+cat << 'EOF' > app/src/main/res/layout/item_folder.xml
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:minHeight="64dp"
+    android:orientation="horizontal"
+    android:paddingStart="16dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="8dp">
+
+    <ImageView
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:importantForAccessibility="no"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_folder"
+        app:tint="?attr/colorOnSurfaceVariant" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/textFolderName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="?attr/textAppearanceBodyLarge"
+            android:textStyle="bold"
+            tools:text="Afrobeat" />
+
+        <TextView
+            android:id="@+id/textFolderDetails"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="middle"
+            android:maxLines="1"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            tools:text="12 titres · /Music/Afrobeat/" />
+
+    </LinearLayout>
+
+</LinearLayout>
+EOF
+
+echo "  -> app/src/main/res/layout/item_playlist.xml"
+mkdir -p app/src/main/res/layout
+cat << 'EOF' > app/src/main/res/layout/item_playlist.xml
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:minHeight="64dp"
+    android:orientation="horizontal"
+    android:paddingStart="16dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="4dp"
+    android:paddingBottom="8dp">
+
+    <ImageView
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:importantForAccessibility="no"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_playlist"
+        app:tint="?attr/colorOnSurfaceVariant" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/textPlaylistName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="?attr/textAppearanceBodyLarge"
+            android:textStyle="bold"
+            tools:text="Ma playlist" />
+
+        <TextView
+            android:id="@+id/textPlaylistDetails"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            tools:text="12 titres · créée le 29 sept. 2026" />
+
+    </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/buttonPlaylistMenu"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_more_vert"
+        app:tint="?attr/colorOnSurfaceVariant"
+        tools:ignore="ContentDescription" />
+
+</LinearLayout>
+EOF
+
+echo "  -> app/src/main/res/menu/menu_playlist_item.xml"
+mkdir -p app/src/main/res/menu
+cat << 'EOF' > app/src/main/res/menu/menu_playlist_item.xml
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/action_delete_playlist"
+        android:title="@string/playlist_delete_action" />
+
+</menu>
+EOF
+
+echo "  -> app/debug.keystore"
+mkdir -p app
+base64 -d << 'EOF' > app/debug.keystore
+MIIKZgIBAzCCChAGCSqGSIb3DQEHAaCCCgEEggn9MIIJ+TCCBcAGCSqGSIb3DQEHAaCCBbEEggWt
+MIIFqTCCBaUGCyqGSIb3DQEMCgECoIIFQDCCBTwwZgYJKoZIhvcNAQUNMFkwOAYJKoZIhvcNAQUM
+MCsEFAZFpApsW3CzRzpojWTdikPUeJYYAgInEAIBIDAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQB
+KgQQqZHb2KzxF3jPZoYkTmpOGgSCBNDTrHm1HZcaMVvIiPV/3kt5PASRsPEnIl7p0MBvK/vAjRcw
+N9xE9NqtOC3FCAk4S61PORtFCq2rjhv72Y5H6q4Am9p+M7tA0MyXc6zshGhttvHXabH63NzL3dCH
+guivWqueOQy9nvoWAIvQ9EbSasRF6W8InXUO8JlTGNJO5V4f1EgS7N5/82/Dz/wKoExycF5Lkt1X
+Gk3NDsfbVhcVy5zU2DFmepCvkITzlPZaDcSM23E2dLG8gGMcbFiOcGffqk3842N2QcdOERbPmp38
+LKn/KYbyg0zfQ7Uq9Nc/a8RppjfW+CDI6zl3pFUNnqf/l7efF8JcHQidYMRqJXqI83PWQzrSS7DA
+ArvJxTE0UwN9WTQcBZZcNTMgDxu6LneYa95vAeHMJ7pxNbO/4ZwXyJ9weeAnyNEG2l/OmazaZp74
+4EFCY7TKyyfVf1uIT7zVeni4K5C58z4aKt992JU7ERUt8HgkdLaHZ7pmGjB+N60VE5dCZDqSfX4J
+Ax92pVkfQ5+arl7rhY+bcHe9+GPWYXgCAg6ygJu1ooP3UtOZeOgx6MjxkY8ptZ+UNfRGTXbydrxE
+nH34tk3GT8Fn8YViMUicVG85ktZUytm9b/K0EH2VyP8GK3F2YhhvDHaXXdifat8KFgyO9gwM1mlc
+r9mIO4UGFL+LLJVxtMMO73+NP7P0vt8p7yK4O6exrYb2VVwUnoqn6vE5qMIyDErZpqpzWOOlRUK0
+gC2GK3UQ4vVtrduCHAv6Pvj447zOx6Hb2JlThcRjybsqRkgGT8J2et7jLGfxTa5AQ1a1K5Hcueb2
+YTb/uy8FiAUp3UtFM/30NrmFwk+ntNUyYUZOB2ej+T3s9cyaJ7wlNYOU4egOU4596EHPC7uSMho6
+rCb7VcTOWMvL4SITBIw/XqQADnYdDd5sS1jhFC6qV6Uv6t3sfOPigeRtbS1LIkXA3SHxsUhXkbhl
+Xrou1x34njodsb9o0M6wI8Q8mfZBWHbmCJJLV8X3UVaW14wp8XFOlloQmkz2RFN70bdqNpjj9B9w
+fzOE6m3jIQbmlEW2wbPM0dV7gZaPHk+ycF1ja2fWDz2yfdu3hS6Rg17cSF9ZeIJnn3Sr0LWWi2Tu
+onywRRboRjwFK7eS0edZLA9n4oFU+Dro4YakCBoiQIRbMq027sKWGFE3cBNAPfMMBV8rz3ZV2Plr
+DddtyLvSWjG0qng0gtI3bbXpjBsO1Ut+ds+NoizmJG3owhy/m6MOS7vQpyetiirosADZVy++fKoB
+eaUQOt+iEmUiTEmta2KFDSJrLZY+V/I8hWwptk2KA8mbsTGclYUJiL9mmwfQW2JJ9O7it+F0gNap
+ex/F6YTvgkcYfkKVl0Zcvf0os1dcqLLjLQc9ym2UTD1pYBMqTrIBH+K1A9aIxHTD++OEF6CNij/B
+PKfoWMjhCJErX+sbSqzBN240tf7nN+uL/yns0Rk6cpTx3FLYWQuyvgMh3U52W75EBdEEOlAMKfsz
+dDZGfrFBIF6vrRvLWK/w86G4ndsGYNH6WmtIXSznuS6GppRtUDzUXJTTa+XDlNHKgwgKM/eAUWP2
+PRGQoXau9LPr3SlTbVRsReFL/7g9nCmIPITH42GBirZUAORBluv32vawTKjaXnzBCH41fDLnDGyz
+CzFSMC0GCSqGSIb3DQEJFDEgHh4AYQBuAGQAcgBvAGkAZABkAGUAYgB1AGcAawBlAHkwIQYJKoZI
+hvcNAQkVMRQEElRpbWUgMTc5MDY1OTk5NjU5MjCCBDEGCSqGSIb3DQEHBqCCBCIwggQeAgEAMIIE
+FwYJKoZIhvcNAQcBMGYGCSqGSIb3DQEFDTBZMDgGCSqGSIb3DQEFDDArBBSrX1wpudjgLKuh0oZ1
+gKAjSc9EzAICJxACASAwDAYIKoZIhvcNAgkFADAdBglghkgBZQMEASoEEJ5kC75m1Y00S1mt6rGZ
+lpuAggOghK1GCVHgbc8o9iH2OP5v21Pro2SAh7G0M546tLkuGQBIU1G1uxEB2WPIoNMuyTh1WBz1
+nvz2zEiHYMXgx4eMzm+VK9eyxmgYM078jlk/q2n7v626hvwyu5bjV9+FQpLpmmRy3Z73Dd8Gh0vL
+Rw/uAO+p/Fd0UVrCJtZiLVP871ffU+4F6X+9VjpFycdaadrq9bqVaMDRVQXBhunIfr1W+albxAiE
+VKQcF4Wg9cqTIpVTd8DppDxZl+doBRBySpYeh4azeB8hiT0njRmdOi8pPEzxRr6f1LwNqKY/tD3i
+aBTOwdk+uYjxmgZ5u7s+idkW0WT6jW5dTbOmRxnoZi3YB5D00Gx+zlgnabfm0kcLVBV6BrG6X6xO
++n2bk5QnZzn5WqYEg7XY1qpy4w7E8nd7QS28qFoPcHHdlDNySMH+AYekn4okf234yonlgvQRXGxF
+rUD+qeO4dPN8ZlLs51a/A4rE+MhtF94pghk+hFIrP19kr/2eYWdnOzxZlo9ccazIyymDLtPMXm5k
+YvcRgc6kObhCIc8VPYfqcL9Yho4o3NBsnxroskmtsSU0FzIsFTgo8Ffu4lIMHQ2RHrzja14bQrNu
+Iy07nMrn2dy98lEtjYCnyf2bulolO4QyvTZX4YNtlb+w3r2Sx4/wviImRcerl5AaQqbCKUUBdGV/
+5ZGw71zbxbUQ8+3j379utbd10o5NXvR47MpmTQ1+3TT6ES+P058h7Elq58ycYzzZOFD8PjpZW659
+Cpo4A8hei8NDibnzVM1oD8+t3axTv305fxbC2f9p1HrXk+egY5axDulxlEfHqvEjVB2NzvDForEw
+YhfRyA7HAqxYa9YQH1QOfXIbr7/cEYhuu3HJXJoXjc/C+sswW0I1p4kUvO5hXO3uIMc1zkDHhccQ
+w6FnqaE0YtdjWPi40fLQHy1G3rGt/qkVpXRviNA7dtnP+QE5OypF8GkQr4V6kb5zAxSjWYja1Lnh
+NDt7qpknahaJisLxhtspqRdDpAs7c6uqhKcLcXFCeLfiLBXAjw1KUz0r/5lgVAx+BSUWPlvp1BIH
+0OfkQwKgWAQMc0bEWpHM7AABwaCUSPqX00alDO3UZmnvj0+hsmpZfxis9rdQnJ6Ni5JXs0TU11cN
+/zSoRDeLLmDgV/WKPZtgjmfQdTxqHQ4bd9VqZmdoZF8+4Tz47CCr+8gH1sfBhTIO9CN0GS9jqniD
+y9JwxcA+yK3w1eVcdaXXfDs/93wQYTBNMDEwDQYJYIZIAWUDBAIBBQAEIM0vr/LzqBMMYVJ11T7K
++B9JIHaZnUQGhyZDcFGbsNCxBBQ0JBpndO4lwG0E/ortI4RgX2H0bAICJxA=
+EOF
+
 echo "[3/3] Verification rapide de la presence des fichiers cles..."
 MISSING=0
+if [ ! -s "app/debug.keystore" ]; then echo "MANQUANT: app/debug.keystore"; MISSING=1; fi
 if [ ! -f "app/build.gradle" ]; then echo "MANQUANT: app/build.gradle"; MISSING=1; fi
 if [ ! -f "app/src/main/java/com/elg/music/ui/main/MainActivity.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/main/MainActivity.kt"; MISSING=1; fi
 if [ ! -f "app/src/main/java/com/elg/music/playback/MusicPlaybackService.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/playback/MusicPlaybackService.kt"; MISSING=1; fi
