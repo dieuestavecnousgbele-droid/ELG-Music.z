@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-echo "=== ELG Music : projet complet + workflow GitHub Actions ==="
+echo "=== ELG Music v1.04 : projet complet + workflow GitHub Actions ==="
 echo "(a lancer depuis la racine du depot, dans un terminal Linux standard)"
 echo ""
 
@@ -23,7 +23,7 @@ mkdir -p app/src/main/res/mipmap-anydpi
 mkdir -p app/src/main/res/values
 mkdir -p app/src/main/res/xml
 
-echo "[2/3] Ecriture des 83 fichiers..."
+echo "[2/3] Ecriture des 87 fichiers..."
 echo "  -> settings.gradle"
 cat << 'EOF' > settings.gradle
 include ':app'
@@ -41,6 +41,8 @@ buildscript {
     dependencies {
         classpath 'com.android.tools.build:gradle:8.11.1'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        // KSP (traitement des annotations de Room) : version alignee sur Kotlin 2.1.21
+        classpath 'com.google.devtools.ksp:symbol-processing-gradle-plugin:2.1.21-2.0.1'
     }
 }
 
@@ -64,6 +66,7 @@ mkdir -p app
 cat << 'EOF' > app/build.gradle
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
+apply plugin: 'com.google.devtools.ksp'
 
 android {
     namespace 'com.elg.music'
@@ -86,8 +89,8 @@ android {
         applicationId 'com.elg.music'
         minSdk 33
         targetSdk 36
-        versionCode 4
-        versionName '1.03'
+        versionCode 5
+        versionName '1.04'
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
@@ -140,6 +143,12 @@ dependencies {
     implementation 'androidx.media3:media3-exoplayer:1.11.0'
     implementation 'androidx.media3:media3-session:1.11.0'
     implementation 'androidx.media3:media3-common:1.11.0'
+
+    // --- Persistance v1.4 : DataStore (réglages) + Room (base locale, via KSP) ---
+    implementation 'androidx.datastore:datastore-preferences:1.1.7'
+    implementation 'androidx.room:room-runtime:2.7.2'
+    implementation 'androidx.room:room-ktx:2.7.2'
+    ksp 'androidx.room:room-compiler:2.7.2'
 
     // --- Firebase : ajouté dès que google-services.json est fourni ---
 
@@ -334,6 +343,8 @@ cat << 'EOF' > app/src/main/res/values/strings.xml
     <string name="player_seek_description">Position de lecture</string>
     <string name="player_seek_state">%1$s sur %2$s</string>
     <string name="player_time_zero">0:00</string>
+    <string name="player_more_options_description">Plus d\'options</string>
+    <string name="player_menu_unavailable">Ces actions ne sont pas disponibles pour ce fichier.</string>
     <string name="queue_title">File d\'attente</string>
     <string name="queue_button_description">File d\'attente</string>
     <string name="queue_row_description">%1$s, %2$s</string>
@@ -1845,6 +1856,9 @@ class PlayerController(context: Context) {
     /** Ordre reçu avant la fin de la connexion au service (ex. « Ouvrir avec ») : exécuté dès qu'elle aboutit. */
     private var pendingAction: (MediaController.() -> Unit)? = null
 
+    /** Identifiants de lecture à retirer de la file dès que la connexion au service aboutit. */
+    private val pendingRemovals = mutableListOf<String>()
+
     private val _state = MutableStateFlow(PlaybackUiState())
     val state: StateFlow<PlaybackUiState> = _state.asStateFlow()
 
@@ -1897,6 +1911,11 @@ class PlayerController(context: Context) {
             pendingAction?.let { action ->
                 pendingAction = null
                 mediaController.action()
+            }
+            if (pendingRemovals.isNotEmpty()) {
+                val removals = pendingRemovals.toList()
+                pendingRemovals.clear()
+                removals.forEach { mediaId -> mediaController.removeQueueItems(mediaId) }
             }
             _state.update {
                 it.copy(
@@ -2009,6 +2028,26 @@ class PlayerController(context: Context) {
         controller?.apply {
             seekTo(index, 0L)
             play()
+        }
+    }
+
+    /**
+     * Retire de la file d'attente le morceau [mediaId] (par ex. après sa suppression du stockage).
+     * Si c'est le morceau en cours, ExoPlayer passe aussitôt au suivant ; sans connexion au
+     * service, le retrait est fait dès que la connexion aboutit.
+     */
+    fun removeFromQueue(mediaId: String) {
+        val connected = controller
+        if (connected == null) {
+            pendingRemovals.add(mediaId)
+        } else {
+            connected.removeQueueItems(mediaId)
+        }
+    }
+
+    private fun MediaController.removeQueueItems(mediaId: String) {
+        for (index in mediaItemCount - 1 downTo 0) {
+            if (getMediaItemAt(index).mediaId == mediaId) removeMediaItem(index)
         }
     }
 
@@ -2857,7 +2896,6 @@ cat << 'EOF' > app/src/main/java/com/elg/music/ui/main/MainActivity.kt
 package com.elg.music.ui.main
 
 import android.Manifest
-import android.app.RecoverableSecurityException
 import android.app.SearchManager
 import android.content.DialogInterface
 import android.content.Intent
@@ -2874,7 +2912,6 @@ import android.view.inputmethod.EditorInfo
 import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
-import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
@@ -2933,7 +2970,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playerUi: PlayerUi
     private var listItemAnimator: RecyclerView.ItemAnimator? = null
     private var progressJob: Job? = null
-    private var pendingDeleteSong: Song? = null
+    private lateinit var songActions: SongActions
     private var lastAppliedSortOrder: SortOrder? = null
     private var lastScreen: LibraryScreen? = null
 
@@ -2977,17 +3014,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val deleteRequestLauncher = registerForActivityResult(
-        ActivityResultContracts.StartIntentSenderForResult()
-    ) { result ->
-        val song = pendingDeleteSong
-        pendingDeleteSong = null
-        if (result.resultCode == RESULT_OK && song != null) {
-            libraryViewModel.removeSongLocally(song)
-            Toast.makeText(this, getString(R.string.song_deleted_message, song.title), Toast.LENGTH_SHORT).show()
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         applyStoredTheme()
         super.onCreate(savedInstanceState)
@@ -3003,6 +3029,7 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, sheetBackCallback)
 
         artworkLoader = ArtworkLoader(this, lifecycleScope)
+        songActions = SongActions(this, ::onSongDeleted)
         setupPlayerUi()
         setupRecyclerView()
         setupSearch()
@@ -3119,7 +3146,8 @@ class MainActivity : AppCompatActivity() {
             isFavorite = { mediaId ->
                 libraryViewModel.findSong(mediaId)?.let { song -> libraryViewModel.isFavorite(song) } ?: false
             },
-            onSheetExpandedChanged = { expanded -> sheetBackCallback.isEnabled = expanded }
+            onSheetExpandedChanged = { expanded -> sheetBackCallback.isEnabled = expanded },
+            onMoreOptionsRequested = ::showPlayerMenu
         )
     }
 
@@ -3606,53 +3634,33 @@ class MainActivity : AppCompatActivity() {
                         .show()
                     true
                 }
-                R.id.action_share_song -> {
-                    shareSong(song)
-                    true
-                }
-                R.id.action_delete_song -> {
-                    confirmAndDeleteSong(song)
-                    true
-                }
-                else -> false
+                // Partager / Supprimer : actions communes au menu des listes et à celui du grand lecteur.
+                else -> songActions.handleMenuItem(item.itemId, song)
             }
         }
         popup.show()
     }
 
-    private fun shareSong(song: Song) {
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "audio/*"
-            putExtra(Intent.EXTRA_STREAM, song.contentUri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    /**
+     * Menu d'options du grand lecteur (bouton « Plus d'options »). Les actions portent sur un morceau
+     * de la bibliothèque ; un fichier ouvert depuis une autre application n'en fait pas partie.
+     */
+    private fun showPlayerMenu(anchor: View, mediaId: String) {
+        val song = libraryViewModel.findSong(mediaId)
+        if (song == null) {
+            Toast.makeText(this, R.string.player_menu_unavailable, Toast.LENGTH_SHORT).show()
+            return
         }
-        startActivity(Intent.createChooser(shareIntent, getString(R.string.share_chooser_title)))
+        songActions.showPlayerMenu(anchor, song)
     }
 
-    private fun confirmAndDeleteSong(song: Song) {
-        MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.delete_dialog_title)
-            .setMessage(getString(R.string.delete_dialog_message, song.title))
-            .setPositiveButton(R.string.delete_dialog_confirm) { _, _ -> deleteSong(song) }
-            .setNegativeButton(R.string.delete_dialog_cancel, null)
-            .show()
-    }
-
-    private fun deleteSong(song: Song) {
-        try {
-            contentResolver.delete(song.contentUri, null, null)
-            libraryViewModel.removeSongLocally(song)
-            Toast.makeText(this, getString(R.string.song_deleted_message, song.title), Toast.LENGTH_SHORT).show()
-        } catch (security: SecurityException) {
-            // Fichier appartenant à une autre application : sur Android 11+ la suppression passe par
-            // une demande de confirmation du système (createDeleteRequest). Si l'exception fournit
-            // déjà une action récupérable, on l'utilise en priorité.
-            val intentSender = (security as? RecoverableSecurityException)
-                ?.userAction?.actionIntent?.intentSender
-                ?: MediaStore.createDeleteRequest(contentResolver, listOf(song.contentUri)).intentSender
-            pendingDeleteSong = song
-            deleteRequestLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
-        }
+    /**
+     * Le fichier a été supprimé du stockage : le morceau quitte la bibliothèque affichée et la file
+     * d'attente. S'il était en cours de lecture, le lecteur passe immédiatement au morceau suivant.
+     */
+    private fun onSongDeleted(song: Song) {
+        libraryViewModel.removeSongLocally(song)
+        playerController.removeFromQueue(song.id.toString())
     }
 
     // ===================== Playlists : création, ajout, retrait, suppression =====================
@@ -5484,6 +5492,8 @@ import kotlin.math.abs
  * @param onAddToPlaylist ouvre le choix de playlist pour ce morceau.
  * @param isFavorite dit si ce morceau est un favori.
  * @param onSheetExpandedChanged prévenu quand le grand lecteur s'ouvre ou se ferme.
+ * @param onMoreOptionsRequested ouvre le menu d'options du morceau en cours (bouton « Plus
+ *   d'options » du grand lecteur) ; reçoit le bouton et l'identifiant de lecture du morceau.
  */
 class PlayerUi(
     activity: AppCompatActivity,
@@ -5496,7 +5506,8 @@ class PlayerUi(
     private val onToggleFavorite: (String) -> Unit,
     private val onAddToPlaylist: (String) -> Unit,
     private val isFavorite: (String) -> Boolean,
-    private val onSheetExpandedChanged: (Boolean) -> Unit
+    private val onSheetExpandedChanged: (Boolean) -> Unit,
+    private val onMoreOptionsRequested: (View, String) -> Unit = { _, _ -> }
 ) {
 
     private val context = activity
@@ -5556,6 +5567,9 @@ class PlayerUi(
         setupHoldToSeek(mini.buttonMiniNext, isForward = true)
 
         sheet.buttonPlayerCollapse.setOnClickListener { collapse() }
+        sheet.buttonPlayerMore.setOnClickListener { anchor ->
+            lastState.mediaId?.let { id -> onMoreOptionsRequested(anchor, id) }
+        }
         sheet.buttonPlayerPlayPause.setOnClickListener { playerController.togglePlayPause() }
         sheet.buttonPlayerShuffle.setOnClickListener { playerController.toggleShuffle() }
         sheet.buttonPlayerRepeat.setOnClickListener { playerController.cycleRepeatMode() }
@@ -6221,6 +6235,19 @@ cat << 'EOF' > app/src/main/res/layout/layout_player_sheet.xml
         app:layout_constraintTop_toTopOf="parent"
         app:tint="?attr/colorOnSurface" />
 
+    <ImageButton
+        android:id="@+id/buttonPlayerMore"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginEnd="8dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/player_more_options_description"
+        android:src="@drawable/ic_more_vert"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="?attr/colorOnSurface" />
+
     <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/imagePlayerArt"
         android:layout_width="0dp"
@@ -6488,6 +6515,430 @@ zipStoreBase=GRADLE_USER_HOME
 zipStorePath=wrapper/dists
 EOF
 
+echo "  -> app/src/main/java/com/elg/music/data/local/SettingsRepository.kt"
+mkdir -p app/src/main/java/com/elg/music/data/local
+cat << 'EOF' > app/src/main/java/com/elg/music/data/local/SettingsRepository.kt
+package com.elg.music.data.local
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import java.io.IOException
+
+/** Une seule instance DataStore par fichier : la délégation doit rester au niveau du fichier. */
+private val Context.elgSettingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "elg_settings")
+
+/**
+ * Réglages avancés de la v1.4, avec les mêmes champs que `elg_settings_config.json`
+ * (voir CLAUDE.md, section 4.A). Les valeurs par défaut sont celles d'une installation neuve :
+ * aucun effet audio actif, vitesse et pitch neutres.
+ *
+ * @param bandLevels niveaux de l'égaliseur 5 bandes (60 Hz, 230 Hz, 910 Hz, 3,6 kHz, 14 kHz), en dB.
+ * @param bassBoost intensité du renfort des graves, de 0 à 100 %.
+ * @param virtualizer intensité de la spatialisation 3D, de 0 à 100 %.
+ * @param playbackSpeed vitesse de lecture, de 0,25x à 2,5x.
+ * @param playbackPitch tonalité, de 0,5x à 2,0x.
+ * @param sleepTimerDefaultMin durée par défaut du minuteur de sommeil, en minutes.
+ * @param fadeOutEnabled fondu sonore sur les 30 dernières secondes avant l'arrêt du minuteur.
+ * @param driveModeTheme thème du mode conduite.
+ */
+data class AppSettings(
+    val equalizerEnabled: Boolean = false,
+    val bandLevels: List<Int> = List(BAND_COUNT) { 0 },
+    val bassBoost: Int = 0,
+    val virtualizer: Int = 0,
+    val playbackSpeed: Float = 1.0f,
+    val playbackPitch: Float = 1.0f,
+    val sleepTimerDefaultMin: Int = 30,
+    val fadeOutEnabled: Boolean = true,
+    val driveModeTheme: String = "dark_neon"
+) {
+    companion object {
+        const val BAND_COUNT = 5
+    }
+}
+
+/**
+ * Accès au DataStore (Jetpack DataStore Preferences) qui conserve les réglages avancés.
+ *
+ * Il coexiste avec [LibraryPreferences] (favoris, liste noire, tri) et avec les préférences du thème
+ * (écran Réglages) : ces stockages existants ne sont ni déplacés ni modifiés. Les prochaines étapes
+ * de la v1.4 (effets audio, minuteur, import/export JSON, réinitialisation) s'appuient sur ce dépôt.
+ *
+ * Chaque valeur est relue avec une borne de sécurité : un fichier altéré ne peut jamais produire
+ * une vitesse, un pitch ou un niveau hors des plages prévues.
+ */
+class SettingsRepository(context: Context) {
+
+    private val store = context.applicationContext.elgSettingsDataStore
+
+    /** Réglages courants ; émet une nouvelle valeur à chaque modification. */
+    val settings: Flow<AppSettings> = store.data
+        .catch { error ->
+            if (error is IOException) emit(emptyPreferences()) else throw error
+        }
+        .map { it.toSettings() }
+
+    /** Lecture unique des réglages courants. */
+    suspend fun current(): AppSettings = settings.first()
+
+    suspend fun setEqualizerEnabled(enabled: Boolean) {
+        store.edit { it[KEY_EQUALIZER_ENABLED] = enabled }
+    }
+
+    suspend fun setBandLevels(levels: List<Int>) {
+        store.edit { it[KEY_BAND_LEVELS] = normalizeBands(levels).joinToString(",") }
+    }
+
+    suspend fun setBassBoost(percent: Int) {
+        store.edit { it[KEY_BASS_BOOST] = percent.coerceIn(0, 100) }
+    }
+
+    suspend fun setVirtualizer(percent: Int) {
+        store.edit { it[KEY_VIRTUALIZER] = percent.coerceIn(0, 100) }
+    }
+
+    suspend fun setPlaybackSpeed(speed: Float) {
+        store.edit { it[KEY_PLAYBACK_SPEED] = speed.coerceIn(MIN_SPEED, MAX_SPEED) }
+    }
+
+    suspend fun setPlaybackPitch(pitch: Float) {
+        store.edit { it[KEY_PLAYBACK_PITCH] = pitch.coerceIn(MIN_PITCH, MAX_PITCH) }
+    }
+
+    suspend fun setSleepTimerDefaultMin(minutes: Int) {
+        store.edit { it[KEY_SLEEP_TIMER_DEFAULT] = minutes.coerceAtLeast(0) }
+    }
+
+    suspend fun setFadeOutEnabled(enabled: Boolean) {
+        store.edit { it[KEY_FADE_OUT_ENABLED] = enabled }
+    }
+
+    suspend fun setDriveModeTheme(theme: String) {
+        store.edit { it[KEY_DRIVE_MODE_THEME] = theme }
+    }
+
+    /** Remplace tous les réglages d'un coup (restauration depuis `elg_settings_config.json`). */
+    suspend fun replaceAll(settings: AppSettings) {
+        store.edit { prefs ->
+            prefs[KEY_EQUALIZER_ENABLED] = settings.equalizerEnabled
+            prefs[KEY_BAND_LEVELS] = normalizeBands(settings.bandLevels).joinToString(",")
+            prefs[KEY_BASS_BOOST] = settings.bassBoost.coerceIn(0, 100)
+            prefs[KEY_VIRTUALIZER] = settings.virtualizer.coerceIn(0, 100)
+            prefs[KEY_PLAYBACK_SPEED] = settings.playbackSpeed.coerceIn(MIN_SPEED, MAX_SPEED)
+            prefs[KEY_PLAYBACK_PITCH] = settings.playbackPitch.coerceIn(MIN_PITCH, MAX_PITCH)
+            prefs[KEY_SLEEP_TIMER_DEFAULT] = settings.sleepTimerDefaultMin.coerceAtLeast(0)
+            prefs[KEY_FADE_OUT_ENABLED] = settings.fadeOutEnabled
+            prefs[KEY_DRIVE_MODE_THEME] = settings.driveModeTheme
+        }
+    }
+
+    /** Revient aux valeurs d'une installation neuve (réinitialisation usine). */
+    suspend fun resetAll() {
+        store.edit { it.clear() }
+    }
+
+    private fun Preferences.toSettings(): AppSettings {
+        val defaults = AppSettings()
+        return AppSettings(
+            equalizerEnabled = this[KEY_EQUALIZER_ENABLED] ?: defaults.equalizerEnabled,
+            bandLevels = parseBands(this[KEY_BAND_LEVELS]),
+            bassBoost = (this[KEY_BASS_BOOST] ?: defaults.bassBoost).coerceIn(0, 100),
+            virtualizer = (this[KEY_VIRTUALIZER] ?: defaults.virtualizer).coerceIn(0, 100),
+            playbackSpeed = (this[KEY_PLAYBACK_SPEED] ?: defaults.playbackSpeed).coerceIn(MIN_SPEED, MAX_SPEED),
+            playbackPitch = (this[KEY_PLAYBACK_PITCH] ?: defaults.playbackPitch).coerceIn(MIN_PITCH, MAX_PITCH),
+            sleepTimerDefaultMin = (this[KEY_SLEEP_TIMER_DEFAULT] ?: defaults.sleepTimerDefaultMin).coerceAtLeast(0),
+            fadeOutEnabled = this[KEY_FADE_OUT_ENABLED] ?: defaults.fadeOutEnabled,
+            driveModeTheme = this[KEY_DRIVE_MODE_THEME] ?: defaults.driveModeTheme
+        )
+    }
+
+    /** Relit « 0,3,2,-1,4 » ; toute valeur manquante ou illisible retombe sur 0. */
+    private fun parseBands(raw: String?): List<Int> =
+        normalizeBands(raw?.split(',')?.map { it.trim().toIntOrNull() ?: 0 }.orEmpty())
+
+    /** Force exactement [AppSettings.BAND_COUNT] niveaux, chacun borné à ±15 dB. */
+    private fun normalizeBands(levels: List<Int>): List<Int> =
+        List(AppSettings.BAND_COUNT) { index ->
+            (levels.getOrNull(index) ?: 0).coerceIn(-MAX_BAND_DB, MAX_BAND_DB)
+        }
+
+    private companion object {
+        const val MIN_SPEED = 0.25f
+        const val MAX_SPEED = 2.5f
+        const val MIN_PITCH = 0.5f
+        const val MAX_PITCH = 2.0f
+        const val MAX_BAND_DB = 15
+
+        val KEY_EQUALIZER_ENABLED = booleanPreferencesKey("equalizer_enabled")
+        val KEY_BAND_LEVELS = stringPreferencesKey("band_levels")
+        val KEY_BASS_BOOST = intPreferencesKey("bass_boost")
+        val KEY_VIRTUALIZER = intPreferencesKey("virtualizer")
+        val KEY_PLAYBACK_SPEED = floatPreferencesKey("playback_speed")
+        val KEY_PLAYBACK_PITCH = floatPreferencesKey("playback_pitch")
+        val KEY_SLEEP_TIMER_DEFAULT = intPreferencesKey("sleep_timer_default")
+        val KEY_FADE_OUT_ENABLED = booleanPreferencesKey("fade_out_enabled")
+        val KEY_DRIVE_MODE_THEME = stringPreferencesKey("drive_mode_theme")
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/data/local/ElgDatabase.kt"
+mkdir -p app/src/main/java/com/elg/music/data/local
+cat << 'EOF' > app/src/main/java/com/elg/music/data/local/ElgDatabase.kt
+package com.elg.music.data.local
+
+import android.content.Context
+import androidx.room.Dao
+import androidx.room.Database
+import androidx.room.Delete
+import androidx.room.Entity
+import androidx.room.Insert
+import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.Room
+import androidx.room.RoomDatabase
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * Morceau rangé dans le coffre-fort audio (étape « Coffre-fort » de la v1.4).
+ *
+ * Le fichier lui-même est déplacé dans `filesDir/vault/` : cette ligne conserve ce qu'il faut pour
+ * l'afficher dans le coffre et, si l'utilisateur le démasque, le remettre à sa place d'origine.
+ *
+ * @param fileName nom du fichier dans `filesDir/vault/`.
+ * @param originalRelativePath dossier d'origine (RELATIVE_PATH du MediaStore, ex. "Music/Afrobeat/").
+ * @param addedAtMs date de mise au coffre (millisecondes depuis 1970).
+ */
+@Entity(tableName = "vault_entries")
+data class VaultEntryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
+    val fileName: String,
+    val title: String,
+    val artist: String?,
+    val album: String?,
+    val durationMs: Long,
+    val mimeType: String?,
+    val originalRelativePath: String,
+    val addedAtMs: Long
+)
+
+@Dao
+interface VaultDao {
+
+    @Insert
+    suspend fun insert(entry: VaultEntryEntity): Long
+
+    @Query("SELECT * FROM vault_entries ORDER BY addedAtMs DESC")
+    fun observeAll(): Flow<List<VaultEntryEntity>>
+
+    @Query("SELECT * FROM vault_entries ORDER BY addedAtMs DESC")
+    suspend fun getAll(): List<VaultEntryEntity>
+
+    @Delete
+    suspend fun delete(entry: VaultEntryEntity)
+
+    /** Vide le coffre (réinitialisation usine) ; les fichiers sont supprimés à part par l'appelant. */
+    @Query("DELETE FROM vault_entries")
+    suspend fun clear()
+}
+
+/**
+ * Base Room locale de l'application. Elle reste volontairement petite : les favoris, la liste noire,
+ * les playlists et le tri restent dans leurs stockages actuels, pour ne rien casser du socle v1.3.
+ */
+@Database(entities = [VaultEntryEntity::class], version = 1, exportSchema = false)
+abstract class ElgDatabase : RoomDatabase() {
+
+    abstract fun vaultDao(): VaultDao
+
+    companion object {
+        private const val DATABASE_NAME = "elg_music.db"
+
+        @Volatile
+        private var instance: ElgDatabase? = null
+
+        fun get(context: Context): ElgDatabase =
+            instance ?: synchronized(this) {
+                instance ?: Room.databaseBuilder(
+                    context.applicationContext,
+                    ElgDatabase::class.java,
+                    DATABASE_NAME
+                ).build().also { instance = it }
+            }
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/ui/main/SongActions.kt"
+mkdir -p app/src/main/java/com/elg/music/ui/main
+cat << 'EOF' > app/src/main/java/com/elg/music/ui/main/SongActions.kt
+package com.elg.music.ui.main
+
+import android.app.Activity
+import android.app.RecoverableSecurityException
+import android.content.ClipData
+import android.content.Intent
+import android.provider.MediaStore
+import android.view.View
+import android.widget.PopupMenu
+import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import com.elg.music.R
+import com.elg.music.data.model.Song
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+
+/**
+ * Actions communes sur un morceau, partagées par le menu à trois points des listes (Titres, artistes,
+ * albums, playlists, dossiers, favoris) et par le menu d'options du grand lecteur.
+ *
+ * Les deux menus utilisent les mêmes identifiants (`action_share_song`, `action_delete_song`) et
+ * passent par [handleMenuItem] : une action ajoutée ici apparaît identique aux deux endroits.
+ *
+ * Doit être créée dans `onCreate` de l'Activity, car elle enregistre le lanceur de la demande de
+ * suppression du système (Android exige cet enregistrement avant que l'écran démarre).
+ *
+ * @param onSongDeleted appelée une fois le fichier réellement supprimé : l'écran retire le morceau
+ *   de la bibliothèque et de la file d'attente (le lecteur passe alors au morceau suivant).
+ */
+class SongActions(
+    private val activity: AppCompatActivity,
+    private val onSongDeleted: (Song) -> Unit
+) {
+
+    private var pendingDeleteSong: Song? = null
+
+    private val deleteRequestLauncher = activity.registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        val song = pendingDeleteSong
+        pendingDeleteSong = null
+        if (result.resultCode == Activity.RESULT_OK && song != null) {
+            notifyDeleted(song)
+        }
+    }
+
+    /** Traite une entrée de menu partagée ; renvoie false si l'identifiant n'est pas géré ici. */
+    fun handleMenuItem(itemId: Int, song: Song): Boolean = when (itemId) {
+        R.id.action_share_song -> {
+            share(song)
+            true
+        }
+        R.id.action_delete_song -> {
+            confirmAndDelete(song)
+            true
+        }
+        else -> false
+    }
+
+    /** Menu d'options du grand lecteur, accroché au bouton « Plus d'options ». */
+    fun showPlayerMenu(anchor: View, song: Song) {
+        val popup = PopupMenu(activity, anchor)
+        popup.menuInflater.inflate(R.menu.menu_player_options, popup.menu)
+        popup.setOnMenuItemClickListener { item -> handleMenuItem(item.itemId, song) }
+        popup.show()
+    }
+
+    /** Ouvre le sélecteur de partage Android avec le fichier audio (Uri content:// du MediaStore). */
+    fun share(song: Song) {
+        val mimeType = song.mimeType?.takeIf { it.startsWith("audio/") } ?: "audio/*"
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, song.contentUri)
+            clipData = ClipData.newRawUri(song.title, song.contentUri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        activity.startActivity(
+            Intent.createChooser(shareIntent, activity.getString(R.string.share_chooser_title))
+        )
+    }
+
+    /** Demande confirmation, puis supprime physiquement le fichier audio. */
+    fun confirmAndDelete(song: Song) {
+        MaterialAlertDialogBuilder(activity)
+            .setTitle(R.string.delete_dialog_title)
+            .setMessage(activity.getString(R.string.delete_dialog_message, song.title))
+            .setPositiveButton(R.string.delete_dialog_confirm) { _, _ -> delete(song) }
+            .setNegativeButton(R.string.delete_dialog_cancel, null)
+            .show()
+    }
+
+    private fun delete(song: Song) {
+        try {
+            val removedRows = activity.contentResolver.delete(song.contentUri, null, null)
+            if (removedRows > 0) notifyDeleted(song) else requestSystemDelete(song, null)
+        } catch (security: SecurityException) {
+            requestSystemDelete(song, security)
+        } catch (error: Exception) {
+            showDeleteError()
+        }
+    }
+
+    /**
+     * Fichier appartenant à une autre application : la suppression passe par la demande de
+     * confirmation du système (`MediaStore.createDeleteRequest`). Si l'exception fournit déjà une
+     * action récupérable, elle est utilisée en priorité.
+     */
+    private fun requestSystemDelete(song: Song, security: SecurityException?) {
+        try {
+            val intentSender = (security as? RecoverableSecurityException)
+                ?.userAction?.actionIntent?.intentSender
+                ?: MediaStore.createDeleteRequest(activity.contentResolver, listOf(song.contentUri)).intentSender
+            pendingDeleteSong = song
+            deleteRequestLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+        } catch (error: Exception) {
+            pendingDeleteSong = null
+            showDeleteError()
+        }
+    }
+
+    private fun notifyDeleted(song: Song) {
+        onSongDeleted(song)
+        Toast.makeText(
+            activity,
+            activity.getString(R.string.song_deleted_message, song.title),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    private fun showDeleteError() {
+        Toast.makeText(activity, R.string.delete_error_message, Toast.LENGTH_LONG).show()
+    }
+}
+EOF
+
+echo "  -> app/src/main/res/menu/menu_player_options.xml"
+mkdir -p app/src/main/res/menu
+cat << 'EOF' > app/src/main/res/menu/menu_player_options.xml
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Menu d'options du grand lecteur : mêmes identifiants que menu_song_item.xml pour les actions
+     communes (partager, supprimer), traitées ensemble par SongActions.handleMenuItem. -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/action_share_song"
+        android:title="@string/song_menu_share" />
+
+    <item
+        android:id="@+id/action_delete_song"
+        android:title="@string/song_menu_delete" />
+
+</menu>
+EOF
+
 echo "  -> app/debug.keystore"
 mkdir -p app
 base64 -d << 'EOF' > app/debug.keystore
@@ -6543,7 +6994,10 @@ EOF
 echo "[3/3] Verification rapide de la presence des fichiers cles..."
 MISSING=0
 if [ ! -s "app/debug.keystore" ]; then echo "MANQUANT: app/debug.keystore"; MISSING=1; fi
-if [ ! -s "app/debug.keystore" ]; then echo "MANQUANT: app/debug.keystore"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/local/SettingsRepository.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/local/SettingsRepository.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/local/ElgDatabase.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/local/ElgDatabase.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/ui/main/SongActions.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/main/SongActions.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/res/menu/menu_player_options.xml" ]; then echo "MANQUANT: app/src/main/res/menu/menu_player_options.xml"; MISSING=1; fi
 if [ ! -f "app/build.gradle" ]; then echo "MANQUANT: app/build.gradle"; MISSING=1; fi
 if [ ! -f "app/src/main/java/com/elg/music/ui/main/MainActivity.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/main/MainActivity.kt"; MISSING=1; fi
 if [ ! -f "app/src/main/java/com/elg/music/playback/MusicPlaybackService.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/playback/MusicPlaybackService.kt"; MISSING=1; fi
