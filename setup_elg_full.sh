@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-echo "=== ELG Music v1.04 (etape 3 : moteur audio & DSP) : projet complet + workflow GitHub Actions ==="
+echo "=== ELG Music v1.04 (etape 4 : coffre-fort audio) : projet complet + workflow GitHub Actions ==="
 echo "(a lancer depuis la racine du depot, dans un terminal Linux standard)"
 echo ""
 
@@ -23,7 +23,7 @@ mkdir -p app/src/main/res/mipmap-anydpi
 mkdir -p app/src/main/res/values
 mkdir -p app/src/main/res/xml
 
-echo "[2/3] Ecriture des 92 fichiers..."
+echo "[2/3] Ecriture des 103 fichiers..."
 echo "  -> settings.gradle"
 cat << 'EOF' > settings.gradle
 include ':app'
@@ -89,7 +89,7 @@ android {
         applicationId 'com.elg.music'
         minSdk 33
         targetSdk 36
-        versionCode 6
+        versionCode 7
         versionName '1.04'
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
@@ -200,6 +200,7 @@ cat << 'EOF' > app/src/main/AndroidManifest.xml
 
     <application
         android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -254,6 +255,13 @@ cat << 'EOF' > app/src/main/AndroidManifest.xml
             android:name=".ui.settings.AudioSettingsActivity"
             android:exported="false"
             android:label="@string/audio_settings_title"
+            android:parentActivityName=".ui.settings.SettingsActivity" />
+
+        <!-- Coffre-fort audio : morceaux masqués, protégés par un code PIN -->
+        <activity
+            android:name=".ui.vault.VaultActivity"
+            android:exported="false"
+            android:label="@string/vault_title"
             android:parentActivityName=".ui.settings.SettingsActivity" />
 
         <!-- Service de lecture audio (Media3 / MediaSessionService) -->
@@ -537,6 +545,44 @@ cat << 'EOF' > app/src/main/res/values/strings.xml
     <string name="audio_reset_button">Réinitialiser l\'audio</string>
     <string name="audio_reset_done_message">Réglages audio réinitialisés</string>
 
+    <!-- ===================== COFFRE-FORT (v1.4, étape 4) ===================== -->
+    <string name="settings_category_privacy">Confidentialité</string>
+    <string name="settings_vault_title">Coffre-fort audio</string>
+    <string name="settings_vault_summary">Morceaux masqués, protégés par un code PIN</string>
+    <string name="vault_title">Coffre-fort</string>
+    <string name="song_menu_vault">Masquer cette musique (coffre-fort)</string>
+    <string name="vault_hide_dialog_title">Masquer dans le coffre-fort ?</string>
+    <string name="vault_hide_dialog_message">« %1$s » sera déplacé dans le stockage privé de l\'application : il disparaîtra de la bibliothèque et des autres applications audio. Retrouvez-le dans Réglages › Coffre-fort, protégé par votre code PIN.\n\nAttention : si vous désinstallez ELG Music, les morceaux du coffre-fort sont perdus. Démasquez-les avant.</string>
+    <string name="vault_hide_confirm">Masquer</string>
+    <string name="vault_hidden_message">%1$s masqué dans le coffre-fort</string>
+    <string name="vault_hide_error_message">Impossible de masquer ce fichier.</string>
+    <string name="vault_hide_cancelled_message">Masquage annulé : le fichier reste dans la bibliothèque.</string>
+
+    <string name="vault_pin_create_title">Créer un code PIN</string>
+    <string name="vault_pin_change_title">Changer le code PIN</string>
+    <string name="vault_pin_create_message">Choisissez un code de 4 ou 6 chiffres. Il protège l\'accès au coffre-fort.</string>
+    <string name="vault_pin_unlock_title">Coffre-fort verrouillé</string>
+    <string name="vault_pin_unlock_message">Saisissez votre code PIN.</string>
+    <string name="vault_pin_hint">Code PIN</string>
+    <string name="vault_pin_confirm_hint">Confirmer le code PIN</string>
+    <string name="vault_pin_confirm_button">Valider</string>
+    <string name="vault_pin_cancel">Annuler</string>
+    <string name="vault_pin_error_format">Le code doit comporter exactement 4 ou 6 chiffres.</string>
+    <string name="vault_pin_error_mismatch">Les deux codes ne sont pas identiques.</string>
+    <string name="vault_pin_error_wrong">Code incorrect. %1$d essai(s) avant blocage temporaire.</string>
+    <string name="vault_pin_error_locked">Trop d\'essais. Réessayez dans %1$d s.</string>
+    <string name="vault_pin_changed_message">Code PIN modifié</string>
+
+    <string name="vault_empty_message">Le coffre-fort est vide. Utilisez « Masquer cette musique » dans le menu d\'un titre.</string>
+    <string name="vault_menu_change_pin">Changer le code PIN</string>
+    <string name="vault_menu_restore">Démasquer (remettre dans la bibliothèque)</string>
+    <string name="vault_menu_delete">Supprimer définitivement</string>
+    <string name="vault_restore_done_message">%1$s remis dans la bibliothèque</string>
+    <string name="vault_restore_error_message">Impossible de démasquer ce fichier.</string>
+    <string name="vault_delete_dialog_title">Supprimer définitivement ?</string>
+    <string name="vault_delete_dialog_message">« %1$s » sera supprimé pour toujours, sans possibilité de le récupérer.</string>
+    <string name="vault_deleted_message">%1$s supprimé</string>
+
 </resources>
 EOF
 
@@ -575,6 +621,15 @@ cat << 'EOF' > app/src/main/res/xml/root_preferences.xml
             app:key="pref_audio"
             app:title="@string/settings_audio_title"
             app:summary="@string/settings_audio_summary" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/settings_category_privacy">
+
+        <Preference
+            app:key="pref_vault"
+            app:title="@string/settings_vault_title"
+            app:summary="@string/settings_vault_summary" />
 
     </PreferenceCategory>
 
@@ -788,6 +843,10 @@ cat << 'EOF' > app/src/main/res/menu/menu_song_item.xml
     <item
         android:id="@+id/action_share_song"
         android:title="@string/song_menu_share" />
+
+    <item
+        android:id="@+id/action_vault_song"
+        android:title="@string/song_menu_vault" />
 
     <item
         android:id="@+id/action_delete_song"
@@ -3004,6 +3063,7 @@ import com.elg.music.data.model.PlaylistSummary
 import com.elg.music.data.model.Song
 import com.elg.music.data.model.SortOrder
 import com.elg.music.data.repository.TitleCleaner
+import com.elg.music.data.repository.VaultRepository
 import com.elg.music.databinding.ActivityMainBinding
 import com.elg.music.databinding.DialogPlaylistNameBinding
 import com.elg.music.playback.MidiSupport
@@ -3129,6 +3189,14 @@ class MainActivity : AppCompatActivity() {
                 playerController.refreshProgress()
                 delay(500L)
             }
+        }
+    }
+
+    /** Retour depuis un autre écran : relit la bibliothèque si un morceau a quitté le coffre-fort. */
+    override fun onRestart() {
+        super.onRestart()
+        if (VaultRepository.consumeLibraryDirty() && hasRequiredPermissions()) {
+            libraryViewModel.loadLibrary()
         }
     }
 
@@ -4013,6 +4081,7 @@ import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import com.elg.music.R
 import com.elg.music.ui.about.AboutDialog
+import com.elg.music.ui.vault.VaultActivity
 
 /**
  * Contenu de l'écran Réglages.
@@ -4037,6 +4106,11 @@ class SettingsFragment : PreferenceFragmentCompat() {
             true
         }
 
+        findPreference<Preference>(KEY_VAULT)?.setOnPreferenceClickListener {
+            startActivity(Intent(requireContext(), VaultActivity::class.java))
+            true
+        }
+
         findPreference<Preference>(KEY_ABOUT)?.setOnPreferenceClickListener {
             AboutDialog().show(parentFragmentManager, AboutDialog.TAG)
             true
@@ -4056,6 +4130,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         const val KEY_THEME = "pref_theme"
         const val KEY_ABOUT = "pref_about"
         const val KEY_AUDIO = "pref_audio"
+        const val KEY_VAULT = "pref_vault"
         private const val THEME_LIGHT = "light"
         private const val THEME_DARK = "dark"
     }
@@ -6888,6 +6963,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.elg.music.R
 import com.elg.music.data.model.Song
+import com.elg.music.ui.vault.VaultActions
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /**
@@ -6910,6 +6986,9 @@ class SongActions(
 
     private var pendingDeleteSong: Song? = null
 
+    /** « Masquer cette musique » (coffre-fort) : même action dans les deux menus. */
+    private val vaultActions = VaultActions(activity, onSongDeleted)
+
     private val deleteRequestLauncher = activity.registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
@@ -6924,6 +7003,10 @@ class SongActions(
     fun handleMenuItem(itemId: Int, song: Song): Boolean = when (itemId) {
         R.id.action_share_song -> {
             share(song)
+            true
+        }
+        R.id.action_vault_song -> {
+            vaultActions.hide(song)
             true
         }
         R.id.action_delete_song -> {
@@ -7020,6 +7103,10 @@ cat << 'EOF' > app/src/main/res/menu/menu_player_options.xml
     <item
         android:id="@+id/action_share_song"
         android:title="@string/song_menu_share" />
+
+    <item
+        android:id="@+id/action_vault_song"
+        android:title="@string/song_menu_vault" />
 
     <item
         android:id="@+id/action_delete_song"
@@ -7768,6 +7855,1337 @@ cat << 'EOF' > app/src/main/res/layout/item_slider_row.xml
 </LinearLayout>
 EOF
 
+echo "  -> app/src/main/java/com/elg/music/data/local/VaultPinStore.kt"
+mkdir -p app/src/main/java/com/elg/music/data/local
+cat << 'EOF' > app/src/main/java/com/elg/music/data/local/VaultPinStore.kt
+package com.elg.music.data.local
+
+import android.content.Context
+import android.util.Base64
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
+import java.io.IOException
+import java.security.MessageDigest
+import java.security.SecureRandom
+
+/** DataStore dédié à la sécurité du coffre-fort : une seule instance par fichier, déclarée au niveau du fichier. */
+private val Context.elgVaultDataStore: DataStore<Preferences> by preferencesDataStore(name = "elg_vault_security")
+
+/** Résultat de la vérification d'un code PIN. */
+sealed interface PinCheckResult {
+    /** Code correct. */
+    data object Success : PinCheckResult
+
+    /** Code incorrect ; [attemptsLeft] essais restants avant le blocage temporaire. */
+    data class Wrong(val attemptsLeft: Int) : PinCheckResult
+
+    /** Trop d'essais : saisie bloquée encore [remainingSeconds] secondes. */
+    data class Locked(val remainingSeconds: Int) : PinCheckResult
+}
+
+/**
+ * Code PIN du coffre-fort audio (4 ou 6 chiffres), conservé dans Jetpack DataStore.
+ *
+ * Le code n'est jamais enregistré en clair : seul son condensat SHA-256 salé l'est. Un sel aléatoire
+ * de 16 octets est tiré à chaque création du code, et le condensat est recalculé en
+ * [HASH_ROUNDS] tours pour ralentir toute attaque par essais successifs. La comparaison se fait en
+ * temps constant. Après [MAX_ATTEMPTS] erreurs de suite, la saisie est bloquée [LOCK_DURATION_MS]
+ * millisecondes ; le compteur et l'heure de fin du blocage sont conservés, donc fermer l'application
+ * ne remet pas les essais à zéro.
+ *
+ * Ce stockage est indépendant de [SettingsRepository] : l'export JSON des réglages et la
+ * réinitialisation de l'audio ne touchent jamais au code PIN.
+ */
+class VaultPinStore(context: Context) {
+
+    private val store = context.applicationContext.elgVaultDataStore
+
+    private suspend fun readPrefs(): Preferences =
+        store.data
+            .catch { error -> if (error is IOException) emit(emptyPreferences()) else throw error }
+            .first()
+
+    /** Vrai si un code PIN a déjà été créé. */
+    suspend fun hasPin(): Boolean {
+        val prefs = readPrefs()
+        return prefs[KEY_PIN_HASH] != null && prefs[KEY_PIN_SALT] != null
+    }
+
+    /** Enregistre un nouveau code (remplace l'ancien) et remet à zéro les essais ratés. */
+    suspend fun setPin(pin: String) {
+        require(isValidFormat(pin)) { "Le code PIN doit comporter 4 ou 6 chiffres." }
+        val salt = ByteArray(SALT_BYTES).also { SecureRandom().nextBytes(it) }
+        val hash = hashPin(pin, salt)
+        store.edit { prefs ->
+            prefs[KEY_PIN_SALT] = Base64.encodeToString(salt, Base64.NO_WRAP)
+            prefs[KEY_PIN_HASH] = Base64.encodeToString(hash, Base64.NO_WRAP)
+            prefs[KEY_FAILED_ATTEMPTS] = 0
+            prefs[KEY_LOCKED_UNTIL] = 0L
+        }
+    }
+
+    /** Vérifie un code saisi, en tenant compte du blocage temporaire et du compteur d'essais. */
+    suspend fun verify(pin: String): PinCheckResult {
+        val prefs = readPrefs()
+        val saltText = prefs[KEY_PIN_SALT]
+        val hashText = prefs[KEY_PIN_HASH]
+        if (saltText == null || hashText == null) return PinCheckResult.Wrong(0)
+
+        val now = System.currentTimeMillis()
+        val lockedUntil = prefs[KEY_LOCKED_UNTIL] ?: 0L
+        if (lockedUntil > now) return PinCheckResult.Locked(secondsFor(lockedUntil - now))
+
+        val salt = runCatching { Base64.decode(saltText, Base64.NO_WRAP) }.getOrNull()
+        val expected = runCatching { Base64.decode(hashText, Base64.NO_WRAP) }.getOrNull()
+        if (salt == null || expected == null) return PinCheckResult.Wrong(0)
+
+        if (MessageDigest.isEqual(expected, hashPin(pin, salt))) {
+            store.edit { editable ->
+                editable[KEY_FAILED_ATTEMPTS] = 0
+                editable[KEY_LOCKED_UNTIL] = 0L
+            }
+            return PinCheckResult.Success
+        }
+
+        val failed = (prefs[KEY_FAILED_ATTEMPTS] ?: 0) + 1
+        if (failed >= MAX_ATTEMPTS) {
+            val until = now + LOCK_DURATION_MS
+            store.edit { editable ->
+                editable[KEY_FAILED_ATTEMPTS] = 0
+                editable[KEY_LOCKED_UNTIL] = until
+            }
+            return PinCheckResult.Locked(secondsFor(LOCK_DURATION_MS))
+        }
+        store.edit { editable -> editable[KEY_FAILED_ATTEMPTS] = failed }
+        return PinCheckResult.Wrong(MAX_ATTEMPTS - failed)
+    }
+
+    /** Supprime le code PIN et le compteur d'essais (réinitialisation usine, étape ultérieure). */
+    suspend fun clear() {
+        store.edit { it.clear() }
+    }
+
+    /** SHA-256 du sel suivi du code, puis recalculé en tours successifs avec le sel. */
+    private fun hashPin(pin: String, salt: ByteArray): ByteArray {
+        val digest = MessageDigest.getInstance("SHA-256")
+        var result = digest.digest(salt + pin.toByteArray(Charsets.UTF_8))
+        repeat(HASH_ROUNDS - 1) {
+            digest.update(result)
+            digest.update(salt)
+            result = digest.digest()
+        }
+        return result
+    }
+
+    private fun secondsFor(millis: Long): Int = ((millis + 999L) / 1000L).toInt().coerceAtLeast(1)
+
+    companion object {
+        private const val SALT_BYTES = 16
+        private const val HASH_ROUNDS = 10_000
+        private const val MAX_ATTEMPTS = 5
+        private const val LOCK_DURATION_MS = 30_000L
+
+        private val KEY_PIN_SALT = stringPreferencesKey("pin_salt")
+        private val KEY_PIN_HASH = stringPreferencesKey("pin_hash")
+        private val KEY_FAILED_ATTEMPTS = intPreferencesKey("failed_attempts")
+        private val KEY_LOCKED_UNTIL = longPreferencesKey("locked_until")
+
+        /** Un code valide comporte exactement 4 ou 6 chiffres. */
+        fun isValidFormat(pin: String): Boolean =
+            (pin.length == 4 || pin.length == 6) && pin.all { it in '0'..'9' }
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/data/repository/VaultRepository.kt"
+mkdir -p app/src/main/java/com/elg/music/data/repository
+cat << 'EOF' > app/src/main/java/com/elg/music/data/repository/VaultRepository.kt
+package com.elg.music.data.repository
+
+import android.content.ContentValues
+import android.content.Context
+import android.net.Uri
+import android.os.Bundle
+import android.provider.MediaStore
+import android.provider.OpenableColumns
+import android.webkit.MimeTypeMap
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import com.elg.music.data.local.ElgDatabase
+import com.elg.music.data.local.VaultEntryEntity
+import com.elg.music.data.model.Song
+import com.elg.music.playback.MidiSupport
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.util.Locale
+
+/**
+ * Coffre-fort audio (étape 4 de la v1.4) : range des morceaux dans le stockage privé de l'application
+ * (`filesDir/vault/`), hors de portée du MediaStore et des autres applications, et les en ressort.
+ *
+ * Mise au coffre en deux temps, pour ne jamais perdre un fichier :
+ *  1. [stage] copie le fichier dans le coffre et enregistre sa ligne dans la base Room ;
+ *  2. l'appelant supprime ensuite l'original (suppression système éventuellement confirmée par
+ *     l'utilisateur). Si la suppression échoue ou est refusée, [discard] annule la copie.
+ *
+ * Le nom d'un fichier du coffre est `<horodatage>_<nom d'origine>` : le nom d'origine se retrouve en
+ * retirant le préfixe, ce qui évite d'ajouter une colonne à la base Room déjà en place.
+ */
+class VaultRepository(context: Context) {
+
+    private val appContext = context.applicationContext
+    private val resolver = appContext.contentResolver
+    private val dao = ElgDatabase.get(appContext).vaultDao()
+
+    /** Dossier privé du coffre : `context.filesDir/vault/`. */
+    private val vaultDir: File by lazy {
+        File(appContext.filesDir, VAULT_DIR_NAME).apply { mkdirs() }
+    }
+
+    /** Contenu du coffre, du plus récent au plus ancien ; émet à chaque modification. */
+    fun observeEntries(): Flow<List<VaultEntryEntity>> = dao.observeAll()
+
+    fun fileOf(entry: VaultEntryEntity): File = File(vaultDir, entry.fileName)
+
+    /** Identifiant de lecture d'un morceau du coffre (distinct des identifiants MediaStore). */
+    fun mediaIdOf(entry: VaultEntryEntity): String = "$MEDIA_ID_PREFIX${entry.id}"
+
+    /**
+     * Copie [song] dans le coffre et enregistre sa ligne. L'original n'est PAS touché.
+     * En cas d'échec, la copie partielle est effacée et l'exception est relancée.
+     */
+    suspend fun stage(song: Song): VaultEntryEntity = withContext(Dispatchers.IO) {
+        val displayName = queryDisplayName(song.contentUri)
+            ?: "${song.title}.${extensionFor(song.mimeType)}"
+        val target = uniqueTarget(sanitize(displayName))
+        try {
+            val input = resolver.openInputStream(song.contentUri)
+                ?: throw IOException("Fichier audio illisible")
+            input.use { source ->
+                FileOutputStream(target).use { output -> source.copyTo(output) }
+            }
+            if (target.length() == 0L) throw IOException("Copie vide")
+            val entry = VaultEntryEntity(
+                fileName = target.name,
+                title = song.title,
+                artist = song.artist,
+                album = song.album,
+                durationMs = song.durationMs,
+                mimeType = song.mimeType,
+                originalRelativePath = song.folderPath,
+                addedAtMs = System.currentTimeMillis()
+            )
+            entry.copy(id = dao.insert(entry))
+        } catch (error: Exception) {
+            target.delete()
+            throw error
+        }
+    }
+
+    /**
+     * Efface une entrée du coffre : fichier et ligne. Sert à annuler une mise au coffre et à la
+     * suppression définitive. Non annulable : la base et le disque ne doivent jamais rester à moitié nettoyés.
+     */
+    suspend fun discard(entry: VaultEntryEntity) {
+        withContext(NonCancellable + Dispatchers.IO) {
+            fileOf(entry).delete()
+            dao.delete(entry)
+        }
+    }
+
+    /**
+     * Démasque un morceau : le fichier retourne dans le MediaStore, dans son dossier d'origine si
+     * Android l'accepte pour l'audio, sinon dans `Music/ELG Music/`. Renvoie false si la restauration
+     * échoue ; le fichier reste alors dans le coffre, intact.
+     */
+    suspend fun restore(entry: VaultEntryEntity): Boolean = withContext(Dispatchers.IO) {
+        val source = fileOf(entry)
+        if (!source.exists()) {
+            // Fichier disparu : la ligne ne mène plus nulle part, on la retire.
+            dao.delete(entry)
+            return@withContext false
+        }
+        val displayName = originalNameOf(entry)
+        val mimeType = entry.mimeType?.takeIf { it.isNotBlank() } ?: mimeFor(displayName)
+
+        val restored = insertIntoMediaStore(source, displayName, mimeType, entry.originalRelativePath) != null ||
+            insertIntoMediaStore(source, displayName, mimeType, FALLBACK_RELATIVE_PATH) != null
+        if (!restored) return@withContext false
+
+        source.delete()
+        dao.delete(entry)
+        markLibraryDirty()
+        true
+    }
+
+    /** Élément de lecture Media3 pour un morceau du coffre (lu directement depuis le stockage privé). */
+    fun toMediaItem(entry: VaultEntryEntity): MediaItem {
+        val uri = Uri.fromFile(fileOf(entry))
+        val metadata = MediaMetadata.Builder()
+            .setTitle(entry.title)
+            .setArtist(entry.artist)
+            .setAlbumTitle(entry.album)
+            // Clé de ArtworkBitmapLoader : sans pochette lisible, la pochette par défaut est utilisée.
+            .setArtworkUri(uri)
+            .setDurationMs(entry.durationMs)
+        if (entry.mimeType?.contains("midi", ignoreCase = true) == true) {
+            metadata.setExtras(Bundle().apply { putString(MidiSupport.EXTRA_MIDI_URI, uri.toString()) })
+        }
+        return MediaItem.Builder()
+            .setMediaId(mediaIdOf(entry))
+            .setUri(uri)
+            .setMediaMetadata(metadata.build())
+            .build()
+    }
+
+    // ===================== Détails =====================
+
+    private fun queryDisplayName(uri: Uri): String? =
+        try {
+            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+                ?.takeIf { it.isNotBlank() }
+        } catch (error: RuntimeException) {
+            null
+        }
+
+    /** Nom de fichier libre dans le coffre : l'horodatage avance d'une milliseconde tant que le nom est pris. */
+    private fun uniqueTarget(safeName: String): File {
+        var stamp = System.currentTimeMillis()
+        var candidate = File(vaultDir, "${stamp}_$safeName")
+        while (candidate.exists()) {
+            stamp += 1L
+            candidate = File(vaultDir, "${stamp}_$safeName")
+        }
+        return candidate
+    }
+
+    /** Retire les caractères interdits dans un nom de fichier et borne la longueur en gardant l'extension. */
+    private fun sanitize(name: String): String {
+        val cleaned = INVALID_FILE_CHARS.replace(name.trim(), "_")
+        val extension = cleaned.substringAfterLast('.', "")
+        val hasExtension = extension.isNotEmpty() && extension.length <= MAX_EXTENSION_LENGTH
+        val base = if (hasExtension) cleaned.dropLast(extension.length + 1) else cleaned
+        val shortBase = base.take(MAX_BASE_NAME_LENGTH).ifBlank { "audio" }
+        return if (hasExtension) "$shortBase.$extension" else shortBase
+    }
+
+    private fun originalNameOf(entry: VaultEntryEntity): String =
+        entry.fileName.substringAfter('_', entry.fileName)
+
+    private fun extensionFor(mimeType: String?): String =
+        mimeType?.let { MimeTypeMap.getSingleton().getExtensionFromMimeType(it) } ?: "mp3"
+
+    private fun mimeFor(fileName: String): String {
+        val extension = fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: "audio/mpeg"
+    }
+
+    /** "Music/Afrobeat" devient "Music/Afrobeat/" ; un chemin vide (racine) est refusé par le MediaStore. */
+    private fun normalizeRelativePath(path: String): String? {
+        val trimmed = path.trim().trim('/')
+        return if (trimmed.isEmpty()) null else "$trimmed/"
+    }
+
+    /**
+     * Crée l'entrée MediaStore (en attente), y écrit le fichier, puis la publie. Renvoie null si
+     * Android refuse ce dossier pour l'audio ou si l'écriture échoue ; l'entrée à moitié créée est alors retirée.
+     */
+    private fun insertIntoMediaStore(
+        source: File,
+        displayName: String,
+        mimeType: String,
+        relativePath: String
+    ): Uri? {
+        val path = normalizeRelativePath(relativePath) ?: return null
+        val collection = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val pending = ContentValues().apply {
+            put(MediaStore.Audio.Media.DISPLAY_NAME, displayName)
+            put(MediaStore.Audio.Media.MIME_TYPE, mimeType)
+            put(MediaStore.Audio.Media.RELATIVE_PATH, path)
+            put(MediaStore.Audio.Media.IS_PENDING, 1)
+        }
+        val uri = try {
+            resolver.insert(collection, pending)
+        } catch (error: RuntimeException) {
+            null
+        }
+        if (uri == null) return null
+
+        return try {
+            val output = resolver.openOutputStream(uri) ?: throw IOException("Écriture impossible")
+            output.use { out -> source.inputStream().use { input -> input.copyTo(out) } }
+            val published = ContentValues().apply { put(MediaStore.Audio.Media.IS_PENDING, 0) }
+            resolver.update(uri, published, null, null)
+            uri
+        } catch (error: Exception) {
+            runCatching { resolver.delete(uri, null, null) }
+            null
+        }
+    }
+
+    companion object {
+        /** Préfixe des identifiants de lecture du coffre (« vault:12 »). */
+        const val MEDIA_ID_PREFIX = "vault:"
+
+        private const val VAULT_DIR_NAME = "vault"
+        private const val FALLBACK_RELATIVE_PATH = "Music/ELG Music/"
+        private const val MAX_EXTENSION_LENGTH = 5
+        private const val MAX_BASE_NAME_LENGTH = 100
+        private val INVALID_FILE_CHARS = Regex("[\\\\/:*?\"<>|\\p{Cntrl}]")
+
+        @Volatile
+        private var libraryDirty = false
+
+        /** Signale à l'écran principal que la bibliothèque doit être relue (un morceau y est revenu). */
+        fun markLibraryDirty() {
+            libraryDirty = true
+        }
+
+        /** Lit puis efface le signal « bibliothèque à relire ». */
+        fun consumeLibraryDirty(): Boolean {
+            val dirty = libraryDirty
+            libraryDirty = false
+            return dirty
+        }
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/ui/vault/PinDialogs.kt"
+mkdir -p app/src/main/java/com/elg/music/ui/vault
+cat << 'EOF' > app/src/main/java/com/elg/music/ui/vault/PinDialogs.kt
+package com.elg.music.ui.vault
+
+import android.content.DialogInterface
+import android.view.View
+import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import androidx.annotation.StringRes
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.widget.doOnTextChanged
+import androidx.lifecycle.lifecycleScope
+import com.elg.music.R
+import com.elg.music.data.local.PinCheckResult
+import com.elg.music.data.local.VaultPinStore
+import com.elg.music.databinding.DialogPinBinding
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.launch
+
+/**
+ * Boîtes de dialogue du code PIN du coffre-fort. Les deux fonctions renvoient le dialogue affiché,
+ * pour que l'écran puisse le refermer s'il quitte le premier plan.
+ *
+ * Le code se saisit sur 4 ou 6 chiffres, masqué (avec un œil pour l'afficher). Les erreurs
+ * apparaissent sous le champ sans fermer le dialogue.
+ */
+object PinDialogs {
+
+    /**
+     * Création (ou changement) du code : saisie puis confirmation.
+     *
+     * @param onCreated appelé une fois le code enregistré.
+     * @param onCancel appelé si l'utilisateur annule (bouton « Annuler », retour).
+     */
+    fun showCreate(
+        activity: AppCompatActivity,
+        store: VaultPinStore,
+        @StringRes titleRes: Int,
+        onCreated: () -> Unit,
+        onCancel: () -> Unit = {}
+    ): AlertDialog {
+        val binding = DialogPinBinding.inflate(activity.layoutInflater)
+        binding.textPinMessage.setText(R.string.vault_pin_create_message)
+        binding.inputLayoutPinConfirm.visibility = View.VISIBLE
+
+        val dialog = MaterialAlertDialogBuilder(activity)
+            .setTitle(titleRes)
+            .setView(binding.root)
+            .setPositiveButton(R.string.vault_pin_confirm_button, null)
+            .setNegativeButton(R.string.vault_pin_cancel) { dialogInterface, _ -> dialogInterface.cancel() }
+            .setOnCancelListener { onCancel() }
+            .create()
+        dialog.setCanceledOnTouchOutside(false)
+
+        dialog.setOnShowListener {
+            val confirmButton = dialog.getButton(DialogInterface.BUTTON_POSITIVE)
+            fun submit() {
+                val pin = binding.editPin.text?.toString().orEmpty()
+                val confirmation = binding.editPinConfirm.text?.toString().orEmpty()
+                when {
+                    !VaultPinStore.isValidFormat(pin) ->
+                        binding.inputLayoutPin.error = activity.getString(R.string.vault_pin_error_format)
+                    pin != confirmation ->
+                        binding.inputLayoutPinConfirm.error = activity.getString(R.string.vault_pin_error_mismatch)
+                    else -> {
+                        confirmButton.isEnabled = false
+                        activity.lifecycleScope.launch {
+                            store.setPin(pin)
+                            dialog.dismiss()
+                            onCreated()
+                        }
+                    }
+                }
+            }
+            confirmButton.setOnClickListener { submit() }
+            binding.editPin.doOnTextChanged { _, _, _, _ -> binding.inputLayoutPin.error = null }
+            binding.editPinConfirm.doOnTextChanged { _, _, _, _ -> binding.inputLayoutPinConfirm.error = null }
+            binding.editPinConfirm.setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_DONE) {
+                    submit()
+                    true
+                } else {
+                    false
+                }
+            }
+            binding.editPin.requestFocus()
+            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        }
+        dialog.show()
+        return dialog
+    }
+
+    /**
+     * Déverrouillage : saisie du code existant. Après trop d'erreurs, la saisie est bloquée un court
+     * moment (voir [VaultPinStore]).
+     *
+     * @param onUnlocked appelé quand le code est correct.
+     * @param onCancel appelé si l'utilisateur annule.
+     */
+    fun showUnlock(
+        activity: AppCompatActivity,
+        store: VaultPinStore,
+        onUnlocked: () -> Unit,
+        onCancel: () -> Unit = {}
+    ): AlertDialog {
+        val binding = DialogPinBinding.inflate(activity.layoutInflater)
+        binding.textPinMessage.setText(R.string.vault_pin_unlock_message)
+        binding.editPin.imeOptions = EditorInfo.IME_ACTION_DONE
+
+        val dialog = MaterialAlertDialogBuilder(activity)
+            .setTitle(R.string.vault_pin_unlock_title)
+            .setView(binding.root)
+            .setPositiveButton(R.string.vault_pin_confirm_button, null)
+            .setNegativeButton(R.string.vault_pin_cancel) { dialogInterface, _ -> dialogInterface.cancel() }
+            .setOnCancelListener { onCancel() }
+            .create()
+        dialog.setCanceledOnTouchOutside(false)
+
+        dialog.setOnShowListener {
+            val confirmButton = dialog.getButton(DialogInterface.BUTTON_POSITIVE)
+            fun submit() {
+                val pin = binding.editPin.text?.toString().orEmpty()
+                if (!VaultPinStore.isValidFormat(pin)) {
+                    binding.inputLayoutPin.error = activity.getString(R.string.vault_pin_error_format)
+                    return
+                }
+                confirmButton.isEnabled = false
+                activity.lifecycleScope.launch {
+                    when (val result = store.verify(pin)) {
+                        PinCheckResult.Success -> {
+                            dialog.dismiss()
+                            onUnlocked()
+                        }
+                        is PinCheckResult.Wrong -> {
+                            confirmButton.isEnabled = true
+                            binding.editPin.text?.clear()
+                            binding.inputLayoutPin.error =
+                                activity.getString(R.string.vault_pin_error_wrong, result.attemptsLeft)
+                        }
+                        is PinCheckResult.Locked -> {
+                            confirmButton.isEnabled = true
+                            binding.editPin.text?.clear()
+                            binding.inputLayoutPin.error =
+                                activity.getString(R.string.vault_pin_error_locked, result.remainingSeconds)
+                        }
+                    }
+                }
+            }
+            confirmButton.setOnClickListener { submit() }
+            binding.editPin.doOnTextChanged { _, _, _, _ -> binding.inputLayoutPin.error = null }
+            binding.editPin.setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_DONE) {
+                    submit()
+                    true
+                } else {
+                    false
+                }
+            }
+            binding.editPin.requestFocus()
+            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        }
+        dialog.show()
+        return dialog
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/ui/vault/VaultActions.kt"
+mkdir -p app/src/main/java/com/elg/music/ui/vault
+cat << 'EOF' > app/src/main/java/com/elg/music/ui/vault/VaultActions.kt
+package com.elg.music.ui.vault
+
+import android.app.Activity
+import android.provider.MediaStore
+import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.elg.music.R
+import com.elg.music.data.local.VaultEntryEntity
+import com.elg.music.data.local.VaultPinStore
+import com.elg.music.data.model.Song
+import com.elg.music.data.repository.VaultRepository
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * Action « Masquer cette musique » (coffre-fort), partagée par le menu à trois points des listes et par
+ * le menu d'options du grand lecteur : [com.elg.music.ui.main.SongActions] y renvoie l'identifiant
+ * `action_vault_song`, donc les deux menus se comportent à l'identique.
+ *
+ * Déroulement : confirmation → création du code PIN si c'est la première fois → copie du fichier dans
+ * le coffre → suppression de l'original (demande système si le fichier appartient à une autre
+ * application) → le morceau quitte la bibliothèque et la file d'attente. Le fichier n'est jamais
+ * supprimé avant que sa copie soit en place ; si la suppression est refusée, la copie est annulée.
+ *
+ * Doit être créée dans `onCreate` de l'Activity (enregistrement du lanceur de la demande système).
+ *
+ * @param onSongHidden appelée une fois le morceau réellement sorti du MediaStore : l'écran le retire
+ *   de la bibliothèque et de la file d'attente (le lecteur passe alors au morceau suivant).
+ */
+class VaultActions(
+    private val activity: AppCompatActivity,
+    private val onSongHidden: (Song) -> Unit
+) {
+
+    private val pinStore = VaultPinStore(activity)
+    private val repository = VaultRepository(activity)
+
+    private var inProgress = false
+    private var pendingSong: Song? = null
+    private var pendingEntry: VaultEntryEntity? = null
+
+    private val deleteRequestLauncher = activity.registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        val song = pendingSong
+        val entry = pendingEntry
+        pendingSong = null
+        pendingEntry = null
+        if (song == null || entry == null) {
+            inProgress = false
+            return@registerForActivityResult
+        }
+        if (result.resultCode == Activity.RESULT_OK) {
+            completeHide(song)
+        } else {
+            activity.lifecycleScope.launch {
+                repository.discard(entry)
+                inProgress = false
+                Toast.makeText(activity, R.string.vault_hide_cancelled_message, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /** Demande confirmation, puis met le morceau au coffre-fort. */
+    fun hide(song: Song) {
+        if (inProgress) return
+        MaterialAlertDialogBuilder(activity)
+            .setTitle(R.string.vault_hide_dialog_title)
+            .setMessage(activity.getString(R.string.vault_hide_dialog_message, song.title))
+            .setPositiveButton(R.string.vault_hide_confirm) { _, _ -> ensurePinThenHide(song) }
+            .setNegativeButton(R.string.delete_dialog_cancel, null)
+            .show()
+    }
+
+    /** Première utilisation : le code PIN est créé avant que le moindre fichier ne parte au coffre. */
+    private fun ensurePinThenHide(song: Song) {
+        activity.lifecycleScope.launch {
+            if (pinStore.hasPin()) {
+                startHide(song)
+            } else {
+                PinDialogs.showCreate(
+                    activity = activity,
+                    store = pinStore,
+                    titleRes = R.string.vault_pin_create_title,
+                    onCreated = { startHide(song) }
+                )
+            }
+        }
+    }
+
+    private fun startHide(song: Song) {
+        if (inProgress) return
+        inProgress = true
+        activity.lifecycleScope.launch {
+            val entry = try {
+                repository.stage(song)
+            } catch (cancellation: CancellationException) {
+                inProgress = false
+                throw cancellation
+            } catch (error: Exception) {
+                inProgress = false
+                showError()
+                return@launch
+            }
+
+            var removedRows = 0
+            try {
+                removedRows = withContext(Dispatchers.IO) {
+                    activity.contentResolver.delete(song.contentUri, null, null)
+                }
+            } catch (cancellation: CancellationException) {
+                // Copie conservée : au pire un doublon dans le coffre, jamais un fichier perdu.
+                inProgress = false
+                throw cancellation
+            } catch (security: SecurityException) {
+                // Fichier d'une autre application : passe par la demande système ci-dessous.
+                removedRows = 0
+            } catch (error: Exception) {
+                repository.discard(entry)
+                inProgress = false
+                showError()
+                return@launch
+            }
+
+            if (removedRows > 0) completeHide(song) else requestSystemDelete(song, entry)
+        }
+    }
+
+    /** Suppression de l'original confirmée par le système (`MediaStore.createDeleteRequest`). */
+    private fun requestSystemDelete(song: Song, entry: VaultEntryEntity) {
+        try {
+            val intentSender = MediaStore
+                .createDeleteRequest(activity.contentResolver, listOf(song.contentUri))
+                .intentSender
+            pendingSong = song
+            pendingEntry = entry
+            deleteRequestLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+        } catch (error: Exception) {
+            pendingSong = null
+            pendingEntry = null
+            activity.lifecycleScope.launch {
+                repository.discard(entry)
+                inProgress = false
+                showError()
+            }
+        }
+    }
+
+    private fun completeHide(song: Song) {
+        inProgress = false
+        onSongHidden(song)
+        Toast.makeText(
+            activity,
+            activity.getString(R.string.vault_hidden_message, song.title),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    private fun showError() {
+        Toast.makeText(activity, R.string.vault_hide_error_message, Toast.LENGTH_LONG).show()
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/ui/vault/VaultAdapter.kt"
+mkdir -p app/src/main/java/com/elg/music/ui/vault
+cat << 'EOF' > app/src/main/java/com/elg/music/ui/vault/VaultAdapter.kt
+package com.elg.music.ui.vault
+
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
+import com.elg.music.R
+import com.elg.music.data.local.VaultEntryEntity
+import com.elg.music.databinding.ItemSongBinding
+
+/**
+ * Liste des morceaux du coffre-fort. Réutilise la ligne de morceau de la bibliothèque (`item_song`) :
+ * même apparence, même bouton « ... » (ici : démasquer ou supprimer définitivement).
+ *
+ * @param onEntryClicked appelé quand l'utilisateur touche la ligne (lecture du coffre à partir de ce morceau).
+ * @param onMenuClicked appelé quand l'utilisateur touche le bouton "..." (menu du morceau).
+ */
+class VaultAdapter(
+    private val onEntryClicked: (VaultEntryEntity) -> Unit,
+    private val onMenuClicked: (VaultEntryEntity, View) -> Unit
+) : ListAdapter<VaultEntryEntity, VaultAdapter.VaultViewHolder>(VaultDiffCallback()) {
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VaultViewHolder {
+        val binding = ItemSongBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+        return VaultViewHolder(binding)
+    }
+
+    override fun onBindViewHolder(holder: VaultViewHolder, position: Int) {
+        holder.bind(getItem(position))
+    }
+
+    inner class VaultViewHolder(private val binding: ItemSongBinding) :
+        RecyclerView.ViewHolder(binding.root) {
+
+        fun bind(entry: VaultEntryEntity) {
+            val context = binding.root.context
+            binding.textSongTitle.text = entry.title
+
+            val artist = entry.artist
+            if (artist != null) {
+                binding.textSongArtist.text = artist
+                binding.textSongArtist.visibility = View.VISIBLE
+                binding.root.contentDescription =
+                    context.getString(R.string.song_row_content_description, entry.title, artist)
+            } else {
+                binding.textSongArtist.visibility = View.GONE
+                binding.root.contentDescription =
+                    context.getString(R.string.song_row_content_description_no_artist, entry.title)
+            }
+
+            binding.buttonSongMenu.contentDescription =
+                context.getString(R.string.song_menu_button_content_description, entry.title)
+
+            binding.root.setOnClickListener { onEntryClicked(entry) }
+            binding.buttonSongMenu.setOnClickListener { anchor -> onMenuClicked(entry, anchor) }
+        }
+    }
+
+    private class VaultDiffCallback : DiffUtil.ItemCallback<VaultEntryEntity>() {
+        override fun areItemsTheSame(oldItem: VaultEntryEntity, newItem: VaultEntryEntity): Boolean =
+            oldItem.id == newItem.id
+
+        override fun areContentsTheSame(oldItem: VaultEntryEntity, newItem: VaultEntryEntity): Boolean =
+            oldItem == newItem
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/ui/vault/VaultActivity.kt"
+mkdir -p app/src/main/java/com/elg/music/ui/vault
+cat << 'EOF' > app/src/main/java/com/elg/music/ui/vault/VaultActivity.kt
+package com.elg.music.ui.vault
+
+import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
+import android.view.WindowManager
+import android.widget.PopupMenu
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.elg.music.R
+import com.elg.music.data.local.VaultEntryEntity
+import com.elg.music.data.local.VaultPinStore
+import com.elg.music.data.repository.VaultRepository
+import com.elg.music.databinding.ActivityVaultBinding
+import com.elg.music.playback.PlaybackUiState
+import com.elg.music.playback.PlayerController
+import com.elg.music.ui.applySystemBarPadding
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+
+/**
+ * Coffre-fort audio (Réglages → Coffre-fort) : consulter, lire, démasquer ou supprimer définitivement
+ * les morceaux masqués.
+ *
+ * L'accès est protégé par le code PIN : à la première ouverture, l'écran demande d'en créer un ; ensuite
+ * il le demande à chaque ouverture, et de nouveau dès que l'écran quitte le premier plan (sauf simple
+ * rotation). Tant qu'il est verrouillé, la liste n'est ni chargée ni affichée. La capture d'écran et
+ * l'aperçu dans les applications récentes sont interdits (FLAG_SECURE).
+ *
+ * La lecture passe par le même service que le reste de l'application : un morceau du coffre se lit
+ * comme les autres, avec notification et commandes.
+ */
+class VaultActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityVaultBinding
+    private lateinit var pinStore: VaultPinStore
+    private lateinit var repository: VaultRepository
+    private lateinit var adapter: VaultAdapter
+    private val playerController: PlayerController by lazy { PlayerController(this) }
+
+    private var unlocked = false
+    private var promptShowing = false
+    private var activePinDialog: AlertDialog? = null
+    private var observeJob: Job? = null
+    private var entries: List<VaultEntryEntity> = emptyList()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        binding = ActivityVaultBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        binding.root.applySystemBarPadding()
+
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        binding.toolbar.setNavigationContentDescription(R.string.settings_back_description)
+
+        pinStore = VaultPinStore(this)
+        repository = VaultRepository(this)
+        adapter = VaultAdapter(onEntryClicked = ::playFrom, onMenuClicked = ::showEntryMenu)
+        binding.recyclerVault.layoutManager = LinearLayoutManager(this)
+        binding.recyclerVault.adapter = adapter
+        binding.buttonVaultPlayPause.setOnClickListener { playerController.togglePlayPause() }
+
+        // Conservé seulement lors d'une rotation d'écran (voir onStop) : jamais après un passage en arrière-plan.
+        unlocked = savedInstanceState?.getBoolean(KEY_UNLOCKED, false) ?: false
+        showLockedState()
+        observePlayback()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        playerController.connect()
+        if (unlocked) startObserving() else requestUnlock()
+    }
+
+    override fun onStop() {
+        playerController.disconnect()
+        observeJob?.cancel()
+        observeJob = null
+        activePinDialog?.dismiss()
+        activePinDialog = null
+        promptShowing = false
+        if (!isChangingConfigurations) {
+            unlocked = false
+            showLockedState()
+        }
+        super.onStop()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_UNLOCKED, unlocked)
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_vault, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_vault_change_pin -> {
+                if (unlocked) changePin()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    override fun onSupportNavigateUp(): Boolean {
+        finish()
+        return true
+    }
+
+    // ===================== Verrouillage =====================
+
+    private fun requestUnlock() {
+        if (promptShowing) return
+        promptShowing = true
+        lifecycleScope.launch {
+            val hasPin = pinStore.hasPin()
+            if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                promptShowing = false
+                return@launch
+            }
+            activePinDialog = if (hasPin) {
+                PinDialogs.showUnlock(
+                    activity = this@VaultActivity,
+                    store = pinStore,
+                    onUnlocked = ::onUnlocked,
+                    onCancel = ::onPinCancelled
+                )
+            } else {
+                PinDialogs.showCreate(
+                    activity = this@VaultActivity,
+                    store = pinStore,
+                    titleRes = R.string.vault_pin_create_title,
+                    onCreated = ::onUnlocked,
+                    onCancel = ::onPinCancelled
+                )
+            }
+        }
+    }
+
+    private fun onUnlocked() {
+        promptShowing = false
+        activePinDialog = null
+        unlocked = true
+        renderNowPlaying(playerController.state.value)
+        startObserving()
+    }
+
+    private fun onPinCancelled() {
+        promptShowing = false
+        activePinDialog = null
+        finish()
+    }
+
+    /** Écran verrouillé : ni liste, ni message, ni barre de lecture. */
+    private fun showLockedState() {
+        entries = emptyList()
+        adapter.submitList(emptyList())
+        binding.recyclerVault.visibility = View.GONE
+        binding.textVaultEmpty.visibility = View.GONE
+        binding.layoutVaultNowPlaying.visibility = View.GONE
+    }
+
+    private fun changePin() {
+        activePinDialog = PinDialogs.showCreate(
+            activity = this,
+            store = pinStore,
+            titleRes = R.string.vault_pin_change_title,
+            onCreated = {
+                activePinDialog = null
+                Toast.makeText(this, R.string.vault_pin_changed_message, Toast.LENGTH_SHORT).show()
+            },
+            onCancel = { activePinDialog = null }
+        )
+    }
+
+    // ===================== Liste =====================
+
+    private fun startObserving() {
+        observeJob?.cancel()
+        observeJob = lifecycleScope.launch {
+            repository.observeEntries().collect { list -> render(list) }
+        }
+    }
+
+    private fun render(list: List<VaultEntryEntity>) {
+        entries = list
+        adapter.submitList(list)
+        val empty = list.isEmpty()
+        binding.textVaultEmpty.visibility = if (empty) View.VISIBLE else View.GONE
+        binding.recyclerVault.visibility = if (empty) View.GONE else View.VISIBLE
+    }
+
+    private fun observePlayback() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                playerController.state.collect { state -> renderNowPlaying(state) }
+            }
+        }
+    }
+
+    /** La barre de lecture n'apparaît que pour un morceau du coffre, et seulement une fois déverrouillé. */
+    private fun renderNowPlaying(state: PlaybackUiState) {
+        val isVaultTrack = unlocked &&
+            state.title != null &&
+            state.mediaId?.startsWith(VaultRepository.MEDIA_ID_PREFIX) == true
+        binding.layoutVaultNowPlaying.visibility = if (isVaultTrack) View.VISIBLE else View.GONE
+        if (!isVaultTrack) return
+        binding.textVaultNowPlaying.text = state.title
+        binding.buttonVaultPlayPause.setImageResource(
+            if (state.isPlaying) R.drawable.ic_pause else R.drawable.ic_play_arrow
+        )
+        binding.buttonVaultPlayPause.contentDescription = getString(
+            if (state.isPlaying) R.string.mini_player_pause_description else R.string.mini_player_play_description
+        )
+    }
+
+    // ===================== Actions sur un morceau =====================
+
+    private fun playFrom(entry: VaultEntryEntity) {
+        val index = entries.indexOfFirst { it.id == entry.id }
+        if (index == -1) return
+        playerController.playSongs(entries.map(repository::toMediaItem), index)
+    }
+
+    private fun showEntryMenu(entry: VaultEntryEntity, anchor: View) {
+        val popup = PopupMenu(this, anchor)
+        popup.menuInflater.inflate(R.menu.menu_vault_item, popup.menu)
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.action_vault_restore -> {
+                    restoreEntry(entry)
+                    true
+                }
+                R.id.action_vault_delete -> {
+                    confirmDelete(entry)
+                    true
+                }
+                else -> false
+            }
+        }
+        popup.show()
+    }
+
+    /** Remet le morceau dans la bibliothèque ; l'écran principal la relira à son retour au premier plan. */
+    private fun restoreEntry(entry: VaultEntryEntity) {
+        playerController.removeFromQueue(repository.mediaIdOf(entry))
+        lifecycleScope.launch {
+            val restored = repository.restore(entry)
+            val messageRes =
+                if (restored) R.string.vault_restore_done_message else R.string.vault_restore_error_message
+            Toast.makeText(this@VaultActivity, getString(messageRes, entry.title), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun confirmDelete(entry: VaultEntryEntity) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.vault_delete_dialog_title)
+            .setMessage(getString(R.string.vault_delete_dialog_message, entry.title))
+            .setPositiveButton(R.string.delete_dialog_confirm) { _, _ ->
+                playerController.removeFromQueue(repository.mediaIdOf(entry))
+                lifecycleScope.launch {
+                    repository.discard(entry)
+                    Toast.makeText(
+                        this@VaultActivity,
+                        getString(R.string.vault_deleted_message, entry.title),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            .setNegativeButton(R.string.delete_dialog_cancel, null)
+            .show()
+    }
+
+    private companion object {
+        const val KEY_UNLOCKED = "vault_unlocked"
+    }
+}
+EOF
+
+echo "  -> app/src/main/res/layout/dialog_pin.xml"
+mkdir -p app/src/main/res/layout
+cat << 'EOF' > app/src/main/res/layout/dialog_pin.xml
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dialogue du code PIN du coffre-fort : message, champ du code, et champ de confirmation (création seulement). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="24dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="24dp">
+
+    <TextView
+        android:id="@+id/textPinMessage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:textAppearance="?attr/textAppearanceBodyMedium"
+        android:textColor="?attr/colorOnSurfaceVariant" />
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/inputLayoutPin"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/vault_pin_hint"
+        app:endIconMode="password_toggle">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/editPin"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:imeOptions="actionNext"
+            android:importantForAutofill="no"
+            android:inputType="numberPassword"
+            android:maxLength="6"
+            android:maxLines="1" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/inputLayoutPinConfirm"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="@string/vault_pin_confirm_hint"
+        android:visibility="gone"
+        app:endIconMode="password_toggle">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/editPinConfirm"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:imeOptions="actionDone"
+            android:importantForAutofill="no"
+            android:inputType="numberPassword"
+            android:maxLength="6"
+            android:maxLines="1" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+</LinearLayout>
+EOF
+
+echo "  -> app/src/main/res/layout/activity_vault.xml"
+mkdir -p app/src/main/res/layout
+cat << 'EOF' > app/src/main/res/layout/activity_vault.xml
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="0dp"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorSurface"
+        app:title="@string/vault_title"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerVault"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:clipToPadding="false"
+        android:paddingBottom="8dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/layoutVaultNowPlaying"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/toolbar"
+        tools:listitem="@layout/item_song" />
+
+    <TextView
+        android:id="@+id/textVaultEmpty"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="32dp"
+        android:layout_marginEnd="32dp"
+        android:gravity="center"
+        android:text="@string/vault_empty_message"
+        android:textAppearance="?attr/textAppearanceBodyLarge"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/layoutVaultNowPlaying"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/toolbar" />
+
+    <!-- Barre de lecture minimale : visible seulement quand un morceau du coffre est en cours. -->
+    <LinearLayout
+        android:id="@+id/layoutVaultNowPlaying"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="?attr/colorSurfaceContainerHigh"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="8dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        tools:visibility="visible">
+
+        <TextView
+            android:id="@+id/textVaultNowPlaying"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="?attr/textAppearanceTitleSmall"
+            tools:text="Titre en cours de lecture" />
+
+        <ImageButton
+            android:id="@+id/buttonVaultPlayPause"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/mini_player_play_description"
+            android:src="@drawable/ic_play_arrow"
+            app:tint="?attr/colorOnSurface" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
+EOF
+
+echo "  -> app/src/main/res/menu/menu_vault.xml"
+mkdir -p app/src/main/res/menu
+cat << 'EOF' > app/src/main/res/menu/menu_vault.xml
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_vault_change_pin"
+        android:title="@string/vault_menu_change_pin"
+        app:showAsAction="never" />
+
+</menu>
+EOF
+
+echo "  -> app/src/main/res/menu/menu_vault_item.xml"
+mkdir -p app/src/main/res/menu
+cat << 'EOF' > app/src/main/res/menu/menu_vault_item.xml
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/action_vault_restore"
+        android:title="@string/vault_menu_restore" />
+
+    <item
+        android:id="@+id/action_vault_delete"
+        android:title="@string/vault_menu_delete" />
+
+</menu>
+EOF
+
+echo "  -> app/src/main/res/xml/data_extraction_rules.xml"
+mkdir -p app/src/main/res/xml
+cat << 'EOF' > app/src/main/res/xml/data_extraction_rules.xml
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Le coffre-fort ne doit jamais quitter l'appareil : ni sauvegarde dans le cloud, ni transfert vers un
+     autre téléphone. Sans cela, le code PIN et la base seraient restaurés sans les fichiers audio. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="vault" />
+        <exclude domain="file" path="datastore/elg_vault_security.preferences_pb" />
+        <exclude domain="database" path="elg_music.db" />
+        <exclude domain="database" path="elg_music.db-wal" />
+        <exclude domain="database" path="elg_music.db-shm" />
+        <exclude domain="database" path="elg_music.db-journal" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="vault" />
+        <exclude domain="file" path="datastore/elg_vault_security.preferences_pb" />
+        <exclude domain="database" path="elg_music.db" />
+        <exclude domain="database" path="elg_music.db-wal" />
+        <exclude domain="database" path="elg_music.db-shm" />
+        <exclude domain="database" path="elg_music.db-journal" />
+    </device-transfer>
+</data-extraction-rules>
+EOF
+
 echo "  -> app/debug.keystore"
 mkdir -p app
 base64 -d << 'EOF' > app/debug.keystore
@@ -7832,6 +9250,17 @@ if [ ! -f "app/src/main/java/com/elg/music/playback/AudioEffectsController.kt" ]
 if [ ! -f "app/src/main/java/com/elg/music/ui/settings/AudioSettingsActivity.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/settings/AudioSettingsActivity.kt"; MISSING=1; fi
 if [ ! -f "app/src/main/res/layout/activity_audio_settings.xml" ]; then echo "MANQUANT: app/src/main/res/layout/activity_audio_settings.xml"; MISSING=1; fi
 if [ ! -f "app/src/main/res/layout/item_slider_row.xml" ]; then echo "MANQUANT: app/src/main/res/layout/item_slider_row.xml"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/local/VaultPinStore.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/local/VaultPinStore.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/repository/VaultRepository.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/repository/VaultRepository.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/ui/vault/PinDialogs.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/vault/PinDialogs.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/ui/vault/VaultActions.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/vault/VaultActions.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/ui/vault/VaultAdapter.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/vault/VaultAdapter.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/ui/vault/VaultActivity.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/vault/VaultActivity.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/res/layout/dialog_pin.xml" ]; then echo "MANQUANT: app/src/main/res/layout/dialog_pin.xml"; MISSING=1; fi
+if [ ! -f "app/src/main/res/layout/activity_vault.xml" ]; then echo "MANQUANT: app/src/main/res/layout/activity_vault.xml"; MISSING=1; fi
+if [ ! -f "app/src/main/res/menu/menu_vault.xml" ]; then echo "MANQUANT: app/src/main/res/menu/menu_vault.xml"; MISSING=1; fi
+if [ ! -f "app/src/main/res/menu/menu_vault_item.xml" ]; then echo "MANQUANT: app/src/main/res/menu/menu_vault_item.xml"; MISSING=1; fi
+if [ ! -f "app/src/main/res/xml/data_extraction_rules.xml" ]; then echo "MANQUANT: app/src/main/res/xml/data_extraction_rules.xml"; MISSING=1; fi
 if [ ! -f "app/build.gradle" ]; then echo "MANQUANT: app/build.gradle"; MISSING=1; fi
 if [ ! -f "app/src/main/java/com/elg/music/ui/main/MainActivity.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/main/MainActivity.kt"; MISSING=1; fi
 if [ ! -f "app/src/main/java/com/elg/music/playback/MusicPlaybackService.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/playback/MusicPlaybackService.kt"; MISSING=1; fi
