@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-echo "=== ELG Music v1.04 (etape 4 : coffre-fort audio) : projet complet + workflow GitHub Actions ==="
+echo "=== ELG Music v1.04 (etape 5 : minuteur de sommeil & boucle A-B) : projet complet + workflow GitHub Actions ==="
 echo "(a lancer depuis la racine du depot, dans un terminal Linux standard)"
 echo ""
 
@@ -23,7 +23,7 @@ mkdir -p app/src/main/res/mipmap-anydpi
 mkdir -p app/src/main/res/values
 mkdir -p app/src/main/res/xml
 
-echo "[2/3] Ecriture des 103 fichiers..."
+echo "[2/3] Ecriture des 110 fichiers..."
 echo "  -> settings.gradle"
 cat << 'EOF' > settings.gradle
 include ':app'
@@ -89,7 +89,7 @@ android {
         applicationId 'com.elg.music'
         minSdk 33
         targetSdk 36
-        versionCode 7
+        versionCode 8
         versionName '1.04'
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
@@ -583,6 +583,47 @@ cat << 'EOF' > app/src/main/res/values/strings.xml
     <string name="vault_delete_dialog_message">« %1$s » sera supprimé pour toujours, sans possibilité de le récupérer.</string>
     <string name="vault_deleted_message">%1$s supprimé</string>
 
+    <!-- ===================== MINUTEUR DE SOMMEIL ET BOUCLE A-B (v1.4, étape 5) ===================== -->
+    <string name="settings_sleep_timer_title">Minuteur de sommeil</string>
+    <string name="settings_sleep_timer_summary">Arrêter la lecture après une durée ou à la fin de la piste, avec fondu sonore</string>
+    <string name="sleep_timer_title">Minuteur de sommeil</string>
+    <string name="sleep_timer_option_15">15 minutes</string>
+    <string name="sleep_timer_option_30">30 minutes</string>
+    <string name="sleep_timer_option_45">45 minutes</string>
+    <string name="sleep_timer_option_60">60 minutes</string>
+    <string name="sleep_timer_option_end">Fin de la piste</string>
+    <string name="sleep_timer_fade_switch">Fondu sonore (30 dernières secondes)</string>
+    <string name="sleep_timer_fading">Fondu sonore en cours…</string>
+    <string name="sleep_timer_start">Démarrer</string>
+    <string name="sleep_timer_cancel">Annuler le minuteur</string>
+    <string name="sleep_timer_status_idle">Aucun minuteur actif.</string>
+    <string name="sleep_timer_status_countdown">Arrêt de la lecture dans %1$s</string>
+    <string name="sleep_timer_status_end_of_track">Arrêt à la fin de la piste en cours</string>
+    <string name="sleep_timer_status_end_of_track_remaining">Arrêt à la fin de la piste (dans %1$s)</string>
+    <string name="sleep_timer_no_playback">Lancez d\'abord la lecture d\'un morceau : le minuteur agit sur la lecture en cours et continue en arrière-plan.</string>
+    <string name="sleep_timer_started_minutes">Minuteur réglé : arrêt dans %1$d min</string>
+    <string name="sleep_timer_started_end">Minuteur réglé : arrêt à la fin de la piste</string>
+    <string name="sleep_timer_cancelled">Minuteur annulé</string>
+
+    <string name="menu_sleep_timer">Minuteur de sommeil…</string>
+    <string name="menu_ab_loop">Boucle A-B…</string>
+    <string name="ab_loop_title">Boucle A-B</string>
+    <string name="ab_loop_hint">Pendant la lecture, touchez « Marquer A » au début du passage voulu, puis « Marquer B » à sa fin : le passage se répète en boucle.</string>
+    <string name="ab_loop_position_format">Position actuelle : %1$s</string>
+    <string name="ab_loop_point_a_format">Point A : %1$s</string>
+    <string name="ab_loop_point_b_format">Point B : %1$s</string>
+    <string name="ab_loop_not_set">non défini</string>
+    <string name="ab_loop_mark_a">Marquer A</string>
+    <string name="ab_loop_mark_b">Marquer B</string>
+    <string name="ab_loop_repeat_switch">Répéter la boucle A-B</string>
+    <string name="ab_loop_clear">Effacer la boucle</string>
+    <string name="ab_loop_error_no_track">Aucun morceau en cours de lecture.</string>
+    <string name="ab_loop_error_needs_a">Marquez d\'abord le point A.</string>
+    <string name="ab_loop_error_too_short">Le point B doit suivre le point A d\'au moins 1 seconde.</string>
+    <string name="ab_loop_error_incomplete">Marquez d\'abord les points A et B.</string>
+    <string name="ab_loop_play_first_message">Lancez d\'abord la lecture de « %1$s » pour définir une boucle A-B.</string>
+    <string name="ab_loop_cleared_message">Boucle A-B effacée</string>
+
 </resources>
 EOF
 
@@ -621,6 +662,11 @@ cat << 'EOF' > app/src/main/res/xml/root_preferences.xml
             app:key="pref_audio"
             app:title="@string/settings_audio_title"
             app:summary="@string/settings_audio_summary" />
+
+        <Preference
+            app:key="pref_sleep_timer"
+            app:title="@string/settings_sleep_timer_title"
+            app:summary="@string/settings_sleep_timer_summary" />
 
     </PreferenceCategory>
 
@@ -843,6 +889,10 @@ cat << 'EOF' > app/src/main/res/menu/menu_song_item.xml
     <item
         android:id="@+id/action_share_song"
         android:title="@string/song_menu_share" />
+
+    <item
+        android:id="@+id/action_ab_loop"
+        android:title="@string/menu_ab_loop" />
 
     <item
         android:id="@+id/action_vault_song"
@@ -2234,6 +2284,9 @@ import com.google.common.util.concurrent.ListenableFuture
  *
  * [AudioEffectsController] applique en direct les réglages de l'écran « Audio & effets » :
  * vitesse, pitch, égaliseur, bass boost et virtualizer.
+ *
+ * [SleepTimerController] (minuteur de sommeil avec fondu sonore) et [AbLoopController] (boucle A-B)
+ * vivent aussi dans ce service : ils agissent sur la lecture même quand l'application est fermée.
  */
 class MusicPlaybackService : MediaSessionService() {
 
@@ -2241,6 +2294,8 @@ class MusicPlaybackService : MediaSessionService() {
     private var artworkLoader: ArtworkBitmapLoader? = null
     private var midiCompanion: MidiCompanion? = null
     private var audioEffects: AudioEffectsController? = null
+    private var sleepTimer: SleepTimerController? = null
+    private var abLoop: AbLoopController? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -2273,6 +2328,14 @@ class MusicPlaybackService : MediaSessionService() {
         effects.attach()
         audioEffects = effects
 
+        val timer = SleepTimerController(this, player)
+        timer.attach()
+        sleepTimer = timer
+
+        val loop = AbLoopController(player)
+        loop.attach()
+        abLoop = loop
+
         val sessionCallback = object : MediaSession.Callback {
             override fun onAddMediaItems(
                 mediaSession: MediaSession,
@@ -2304,6 +2367,10 @@ class MusicPlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        abLoop?.release()
+        abLoop = null
+        sleepTimer?.release()
+        sleepTimer = null
         audioEffects?.release()
         audioEffects = null
         midiCompanion?.release()
@@ -3071,8 +3138,10 @@ import com.elg.music.playback.PlayerController
 import com.elg.music.ui.ArtworkLoader
 import com.elg.music.ui.about.AboutDialog
 import com.elg.music.ui.applySystemBarPadding
+import com.elg.music.ui.player.AbLoopSheet
 import com.elg.music.ui.player.PlayerUi
 import com.elg.music.ui.player.QueueSheet
+import com.elg.music.ui.player.SleepTimerSheet
 import com.elg.music.ui.settings.SettingsActivity
 import com.elg.music.ui.settings.SettingsFragment
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -3768,6 +3837,10 @@ class MainActivity : AppCompatActivity() {
                         .show()
                     true
                 }
+                R.id.action_ab_loop -> {
+                    openAbLoopFor(song)
+                    true
+                }
                 // Partager / Supprimer : actions communes au menu des listes et à celui du grand lecteur.
                 else -> songActions.handleMenuItem(item.itemId, song)
             }
@@ -3780,12 +3853,28 @@ class MainActivity : AppCompatActivity() {
      * de la bibliothèque ; un fichier ouvert depuis une autre application n'en fait pas partie.
      */
     private fun showPlayerMenu(anchor: View, mediaId: String) {
+        // Un fichier ouvert depuis une autre application n'est pas dans la bibliothèque (song == null) :
+        // le menu ne propose alors que le minuteur de sommeil et la boucle A-B.
         val song = libraryViewModel.findSong(mediaId)
-        if (song == null) {
-            Toast.makeText(this, R.string.player_menu_unavailable, Toast.LENGTH_SHORT).show()
-            return
+        songActions.showPlayerMenu(
+            anchor = anchor,
+            song = song,
+            onSleepTimer = { SleepTimerSheet.show(this) },
+            onAbLoop = { AbLoopSheet.show(this, playerController.state) }
+        )
+    }
+
+    /** « Boucle A-B… » depuis la liste : possible seulement pour le morceau en cours de lecture. */
+    private fun openAbLoopFor(song: Song) {
+        if (playerController.state.value.mediaId == song.id.toString()) {
+            AbLoopSheet.show(this, playerController.state)
+        } else {
+            Toast.makeText(
+                this,
+                getString(R.string.ab_loop_play_first_message, song.title),
+                Toast.LENGTH_LONG
+            ).show()
         }
-        songActions.showPlayerMenu(anchor, song)
     }
 
     /**
@@ -4075,12 +4164,14 @@ package com.elg.music.ui.settings
 
 import android.content.Intent
 import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import com.elg.music.R
 import com.elg.music.ui.about.AboutDialog
+import com.elg.music.ui.player.SleepTimerSheet
 import com.elg.music.ui.vault.VaultActivity
 
 /**
@@ -4103,6 +4194,11 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
         findPreference<Preference>(KEY_AUDIO)?.setOnPreferenceClickListener {
             startActivity(Intent(requireContext(), AudioSettingsActivity::class.java))
+            true
+        }
+
+        findPreference<Preference>(KEY_SLEEP_TIMER)?.setOnPreferenceClickListener {
+            SleepTimerSheet.show(requireActivity() as AppCompatActivity)
             true
         }
 
@@ -4131,6 +4227,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         const val KEY_ABOUT = "pref_about"
         const val KEY_AUDIO = "pref_audio"
         const val KEY_VAULT = "pref_vault"
+        const val KEY_SLEEP_TIMER = "pref_sleep_timer"
         private const val THEME_LIGHT = "light"
         private const val THEME_DARK = "dark"
     }
@@ -7016,11 +7113,37 @@ class SongActions(
         else -> false
     }
 
-    /** Menu d'options du grand lecteur, accroché au bouton « Plus d'options ». */
-    fun showPlayerMenu(anchor: View, song: Song) {
+    /**
+     * Menu d'options du grand lecteur, accroché au bouton « Plus d'options ». Le minuteur de sommeil et la
+     * boucle A-B portent sur la lecture en cours et sont toujours proposés ; partager, masquer et supprimer
+     * ne le sont que pour un morceau de la bibliothèque ([song] non nul), pas pour un fichier ouvert depuis
+     * une autre application.
+     */
+    fun showPlayerMenu(
+        anchor: View,
+        song: Song?,
+        onSleepTimer: () -> Unit = {},
+        onAbLoop: () -> Unit = {}
+    ) {
         val popup = PopupMenu(activity, anchor)
         popup.menuInflater.inflate(R.menu.menu_player_options, popup.menu)
-        popup.setOnMenuItemClickListener { item -> handleMenuItem(item.itemId, song) }
+        val isLibrarySong = song != null
+        popup.menu.findItem(R.id.action_share_song).isVisible = isLibrarySong
+        popup.menu.findItem(R.id.action_vault_song).isVisible = isLibrarySong
+        popup.menu.findItem(R.id.action_delete_song).isVisible = isLibrarySong
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.action_sleep_timer -> {
+                    onSleepTimer()
+                    true
+                }
+                R.id.action_ab_loop -> {
+                    onAbLoop()
+                    true
+                }
+                else -> if (song != null) handleMenuItem(item.itemId, song) else false
+            }
+        }
         popup.show()
     }
 
@@ -7099,6 +7222,14 @@ cat << 'EOF' > app/src/main/res/menu/menu_player_options.xml
 <!-- Menu d'options du grand lecteur : mêmes identifiants que menu_song_item.xml pour les actions
      communes (partager, supprimer), traitées ensemble par SongActions.handleMenuItem. -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/action_sleep_timer"
+        android:title="@string/menu_sleep_timer" />
+
+    <item
+        android:id="@+id/action_ab_loop"
+        android:title="@string/menu_ab_loop" />
 
     <item
         android:id="@+id/action_share_song"
@@ -9186,6 +9317,959 @@ cat << 'EOF' > app/src/main/res/xml/data_extraction_rules.xml
 </data-extraction-rules>
 EOF
 
+echo "  -> app/src/main/java/com/elg/music/playback/SleepTimerHub.kt"
+mkdir -p app/src/main/java/com/elg/music/playback
+cat << 'EOF' > app/src/main/java/com/elg/music/playback/SleepTimerHub.kt
+package com.elg.music.playback
+
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/** Mode du minuteur de sommeil. */
+enum class SleepTimerMode { IDLE, COUNTDOWN, END_OF_TRACK }
+
+/**
+ * État du minuteur de sommeil, publié par [SleepTimerController] (service de lecture) et affiché par l'écran.
+ *
+ * @param remainingMs temps restant avant l'arrêt (0 si inconnu).
+ * @param fading vrai pendant le fondu sonore des 30 dernières secondes.
+ */
+data class SleepTimerState(
+    val mode: SleepTimerMode = SleepTimerMode.IDLE,
+    val remainingMs: Long = 0L,
+    val fading: Boolean = false
+) {
+    val isActive: Boolean
+        get() = mode != SleepTimerMode.IDLE
+}
+
+/** Ordres envoyés au minuteur depuis l'interface. */
+sealed interface SleepTimerRequest {
+    data class StartCountdown(val minutes: Int) : SleepTimerRequest
+    data object StartEndOfTrack : SleepTimerRequest
+    data object Cancel : SleepTimerRequest
+}
+
+/**
+ * Point de rencontre, dans le processus de l'application, entre l'interface et le minuteur qui vit dans
+ * [MusicPlaybackService] : l'interface envoie des ordres et observe [state].
+ *
+ * Tant que le service de lecture n'est pas actif, [send] renvoie false : il n'y a alors aucune lecture à arrêter.
+ */
+object SleepTimerHub {
+
+    private val _state = MutableStateFlow(SleepTimerState())
+    val state: StateFlow<SleepTimerState> = _state.asStateFlow()
+
+    @Volatile
+    private var handler: ((SleepTimerRequest) -> Unit)? = null
+
+    /** Vrai quand le service de lecture est là pour exécuter les ordres. */
+    val isServiceAttached: Boolean
+        get() = handler != null
+
+    /** Envoie un ordre ; renvoie false si le service de lecture n'est pas actif. */
+    fun send(request: SleepTimerRequest): Boolean {
+        val target = handler ?: return false
+        target(request)
+        return true
+    }
+
+    internal fun attach(newHandler: (SleepTimerRequest) -> Unit) {
+        handler = newHandler
+    }
+
+    internal fun detach(oldHandler: (SleepTimerRequest) -> Unit) {
+        if (handler === oldHandler) handler = null
+    }
+
+    internal fun publish(newState: SleepTimerState) {
+        _state.value = newState
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/playback/SleepTimerController.kt"
+mkdir -p app/src/main/java/com/elg/music/playback
+cat << 'EOF' > app/src/main/java/com/elg/music/playback/SleepTimerController.kt
+package com.elg.music.playback
+
+import android.content.Context
+import android.os.SystemClock
+import androidx.media3.common.C
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import com.elg.music.data.local.SettingsRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+/**
+ * Minuteur de sommeil (étape 5 de la v1.4), hébergé par [MusicPlaybackService] : il continue donc de
+ * compter quand l'application est fermée, tant que la lecture est en cours.
+ *
+ *  - Décompte : la lecture est mise en pause quand la durée choisie (15, 30, 45, 60 min) est écoulée.
+ *  - Fin de la piste : la lecture s'arrête exactement à la fin du morceau en cours
+ *    (`pauseAtEndOfMediaItems` d'ExoPlayer), sans laisser entendre le début du suivant.
+ *  - Fondu sonore (option, réglage `fadeOutEnabled` du DataStore) : le volume du lecteur baisse
+ *    progressivement pendant les 30 dernières secondes, puis est remis à 100 % une fois la pause effective.
+ *
+ * Doit être utilisé sur le thread principal (celui d'ExoPlayer dans le service).
+ */
+class SleepTimerController(
+    context: Context,
+    private val player: ExoPlayer
+) : Player.Listener {
+
+    private val repository = SettingsRepository(context)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var settingsJob: Job? = null
+    private var tickJob: Job? = null
+    private var volumeRestoreJob: Job? = null
+
+    private var fadeEnabled = true
+    private var mode = SleepTimerMode.IDLE
+    private var endAtRealtimeMs = 0L
+
+    private val requestHandler: (SleepTimerRequest) -> Unit = { request ->
+        scope.launch { handle(request) }
+    }
+
+    fun attach() {
+        player.addListener(this)
+        settingsJob = scope.launch {
+            repository.settings.collect { settings -> fadeEnabled = settings.fadeOutEnabled }
+        }
+        SleepTimerHub.attach(requestHandler)
+        SleepTimerHub.publish(SleepTimerState())
+    }
+
+    fun release() {
+        SleepTimerHub.detach(requestHandler)
+        settingsJob?.cancel()
+        settingsJob = null
+        stopTick()
+        volumeRestoreJob?.cancel()
+        player.setPauseAtEndOfMediaItems(false)
+        player.volume = 1f
+        player.removeListener(this)
+        mode = SleepTimerMode.IDLE
+        SleepTimerHub.publish(SleepTimerState())
+        scope.cancel()
+    }
+
+    // ===================== Ordres =====================
+
+    private fun handle(request: SleepTimerRequest) {
+        when (request) {
+            is SleepTimerRequest.StartCountdown -> startCountdown(request.minutes)
+            SleepTimerRequest.StartEndOfTrack -> startEndOfTrack()
+            SleepTimerRequest.Cancel -> cancel()
+        }
+    }
+
+    private fun startCountdown(minutes: Int) {
+        resetBeforeStart()
+        mode = SleepTimerMode.COUNTDOWN
+        endAtRealtimeMs = SystemClock.elapsedRealtime() + minutes.coerceIn(1, MAX_MINUTES) * 60_000L
+        startTick()
+    }
+
+    private fun startEndOfTrack() {
+        resetBeforeStart()
+        mode = SleepTimerMode.END_OF_TRACK
+        player.setPauseAtEndOfMediaItems(true)
+        startTick()
+    }
+
+    private fun cancel() {
+        stopTick()
+        volumeRestoreJob?.cancel()
+        player.setPauseAtEndOfMediaItems(false)
+        player.volume = 1f
+        mode = SleepTimerMode.IDLE
+        SleepTimerHub.publish(SleepTimerState())
+    }
+
+    private fun resetBeforeStart() {
+        stopTick()
+        volumeRestoreJob?.cancel()
+        player.setPauseAtEndOfMediaItems(false)
+        player.volume = 1f
+    }
+
+    // ===================== Décompte et fondu =====================
+
+    private fun startTick() {
+        tickJob?.cancel()
+        onTick()
+        tickJob = scope.launch {
+            while (isActive) {
+                delay(TICK_MS)
+                onTick()
+            }
+        }
+    }
+
+    private fun stopTick() {
+        tickJob?.cancel()
+        tickJob = null
+    }
+
+    private fun onTick() {
+        if (mode == SleepTimerMode.IDLE) return
+        val remaining = remainingMs()
+        if (mode == SleepTimerMode.COUNTDOWN && remaining != null && remaining <= 0L) {
+            expire()
+            return
+        }
+        val fading = fadeEnabled && remaining != null && remaining <= FADE_MS
+        val target = if (fading) {
+            val ratio = (remaining!!.toFloat() / FADE_MS).coerceIn(0f, 1f)
+            ratio * ratio // courbe douce : le fondu est plus naturel à l'oreille qu'une descente linéaire
+        } else {
+            1f
+        }
+        if (player.volume != target) player.volume = target
+        SleepTimerHub.publish(SleepTimerState(mode, remaining ?: 0L, fading))
+    }
+
+    /** Temps restant : durée choisie (décompte) ou fin du morceau en cours (tient compte de la vitesse). */
+    private fun remainingMs(): Long? = when (mode) {
+        SleepTimerMode.COUNTDOWN -> (endAtRealtimeMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+        SleepTimerMode.END_OF_TRACK -> {
+            val duration = player.duration
+            if (duration == C.TIME_UNSET || duration <= 0L) {
+                null
+            } else {
+                val speed = player.playbackParameters.speed.coerceAtLeast(0.1f)
+                ((duration - player.currentPosition).coerceAtLeast(0L) / speed).toLong()
+            }
+        }
+        SleepTimerMode.IDLE -> null
+    }
+
+    /** Décompte terminé : pause, puis volume remis à 100 % une fois le son réellement coupé. */
+    private fun expire() {
+        stopTick()
+        mode = SleepTimerMode.IDLE
+        SleepTimerHub.publish(SleepTimerState())
+        player.pause()
+        scheduleVolumeRestore()
+    }
+
+    /** Fin de piste atteinte : le lecteur s'est mis en pause tout seul. */
+    private fun finishEndOfTrack() {
+        stopTick()
+        mode = SleepTimerMode.IDLE
+        player.setPauseAtEndOfMediaItems(false)
+        SleepTimerHub.publish(SleepTimerState())
+        scheduleVolumeRestore()
+    }
+
+    private fun scheduleVolumeRestore() {
+        volumeRestoreJob?.cancel()
+        volumeRestoreJob = scope.launch {
+            delay(VOLUME_RESTORE_DELAY_MS)
+            if (mode == SleepTimerMode.IDLE) player.volume = 1f
+        }
+    }
+
+    // ===================== Événements du lecteur =====================
+
+    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+        if (mode == SleepTimerMode.END_OF_TRACK && !playWhenReady &&
+            reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM
+        ) {
+            finishEndOfTrack()
+        }
+    }
+
+    override fun onPlaybackStateChanged(playbackState: Int) {
+        if (mode == SleepTimerMode.END_OF_TRACK && playbackState == Player.STATE_ENDED) {
+            finishEndOfTrack()
+        }
+    }
+
+    private companion object {
+        const val TICK_MS = 250L
+        const val FADE_MS = 30_000L
+        const val MAX_MINUTES = 600
+        const val VOLUME_RESTORE_DELAY_MS = 500L
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/playback/AbLoopController.kt"
+mkdir -p app/src/main/java/com/elg/music/playback
+cat << 'EOF' > app/src/main/java/com/elg/music/playback/AbLoopController.kt
+package com.elg.music.playback
+
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+/** Boucle A-B du morceau en cours : points de début (A) et de fin (B), en millisecondes. */
+data class AbLoopState(
+    val aMs: Long? = null,
+    val bMs: Long? = null,
+    val enabled: Boolean = false
+) {
+    val isComplete: Boolean
+        get() = aMs != null && bMs != null
+}
+
+/** Ordres envoyés à la boucle A-B depuis l'interface. */
+sealed interface AbLoopRequest {
+    data object MarkA : AbLoopRequest
+    data object MarkB : AbLoopRequest
+    data class SetEnabled(val enabled: Boolean) : AbLoopRequest
+    data object Clear : AbLoopRequest
+}
+
+/** Résultat d'un ordre ; tout sauf [OK] est un refus à expliquer à l'utilisateur. */
+enum class AbLoopResult { OK, NOT_ATTACHED, NO_TRACK, NEEDS_A, TOO_SHORT, INCOMPLETE }
+
+/**
+ * Point de rencontre entre l'interface et la boucle A-B qui vit dans [MusicPlaybackService]
+ * (même principe que [SleepTimerHub]). À appeler depuis le thread principal.
+ */
+object AbLoopHub {
+
+    private val _state = MutableStateFlow(AbLoopState())
+    val state: StateFlow<AbLoopState> = _state.asStateFlow()
+
+    @Volatile
+    private var handler: ((AbLoopRequest) -> AbLoopResult)? = null
+
+    fun send(request: AbLoopRequest): AbLoopResult {
+        val target = handler ?: return AbLoopResult.NOT_ATTACHED
+        return target(request)
+    }
+
+    internal fun attach(newHandler: (AbLoopRequest) -> AbLoopResult) {
+        handler = newHandler
+    }
+
+    internal fun detach(oldHandler: (AbLoopRequest) -> AbLoopResult) {
+        if (handler === oldHandler) handler = null
+    }
+
+    internal fun publish(newState: AbLoopState) {
+        _state.value = newState
+    }
+}
+
+/**
+ * Contrôleur de boucle A-B (étape 5 de la v1.4), hébergé par [MusicPlaybackService].
+ *
+ * Les points A et B sont posés à la position de lecture du moment. Quand la boucle est activée,
+ * la lecture revient en A dès qu'elle atteint B (contrôle toutes les [POLL_MS] ms, uniquement
+ * pendant la lecture). Les points appartiennent au morceau : ils sont effacés quand on change de
+ * morceau (sauf répétition du même titre).
+ *
+ * Doit être utilisé sur le thread principal.
+ */
+class AbLoopController(private val player: ExoPlayer) : Player.Listener {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var loopJob: Job? = null
+
+    private var pointA: Long? = null
+    private var pointB: Long? = null
+    private var enabled = false
+
+    private val requestHandler: (AbLoopRequest) -> AbLoopResult = { request -> handle(request) }
+
+    fun attach() {
+        player.addListener(this)
+        AbLoopHub.attach(requestHandler)
+        AbLoopHub.publish(AbLoopState())
+    }
+
+    fun release() {
+        AbLoopHub.detach(requestHandler)
+        loopJob?.cancel()
+        loopJob = null
+        player.removeListener(this)
+        AbLoopHub.publish(AbLoopState())
+        scope.cancel()
+    }
+
+    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) return
+        if (pointA != null || pointB != null || enabled) reset()
+    }
+
+    private fun handle(request: AbLoopRequest): AbLoopResult {
+        when (request) {
+            AbLoopRequest.MarkA -> {
+                if (player.currentMediaItem == null) return AbLoopResult.NO_TRACK
+                val position = player.currentPosition.coerceAtLeast(0L)
+                pointA = position
+                val end = pointB
+                if (end != null && end - position < MIN_LOOP_MS) {
+                    pointB = null
+                    enabled = false
+                }
+            }
+            AbLoopRequest.MarkB -> {
+                if (player.currentMediaItem == null) return AbLoopResult.NO_TRACK
+                val start = pointA ?: return AbLoopResult.NEEDS_A
+                val position = player.currentPosition.coerceAtLeast(0L)
+                if (position - start < MIN_LOOP_MS) return AbLoopResult.TOO_SHORT
+                pointB = position
+                enabled = true
+            }
+            is AbLoopRequest.SetEnabled -> {
+                if (request.enabled && (pointA == null || pointB == null)) return AbLoopResult.INCOMPLETE
+                enabled = request.enabled
+            }
+            AbLoopRequest.Clear -> {
+                pointA = null
+                pointB = null
+                enabled = false
+            }
+        }
+        sync()
+        return AbLoopResult.OK
+    }
+
+    private fun reset() {
+        pointA = null
+        pointB = null
+        enabled = false
+        sync()
+    }
+
+    /** Publie l'état et démarre ou arrête le contrôle de position selon que la boucle est active. */
+    private fun sync() {
+        AbLoopHub.publish(AbLoopState(pointA, pointB, enabled))
+        if (!enabled) {
+            loopJob?.cancel()
+            loopJob = null
+            return
+        }
+        if (loopJob?.isActive == true) return
+        loopJob = scope.launch {
+            while (isActive) {
+                delay(POLL_MS)
+                val start = pointA ?: continue
+                val end = pointB ?: continue
+                if (player.isPlaying && player.currentPosition >= end) {
+                    player.seekTo(start)
+                }
+            }
+        }
+    }
+
+    private companion object {
+        const val POLL_MS = 80L
+        const val MIN_LOOP_MS = 1_000L
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/ui/player/SleepTimerSheet.kt"
+mkdir -p app/src/main/java/com/elg/music/ui/player
+cat << 'EOF' > app/src/main/java/com/elg/music/ui/player/SleepTimerSheet.kt
+package com.elg.music.ui.player
+
+import android.view.LayoutInflater
+import android.view.View
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.elg.music.R
+import com.elg.music.data.local.SettingsRepository
+import com.elg.music.databinding.LayoutSleepTimerSheetBinding
+import com.elg.music.playback.SleepTimerHub
+import com.elg.music.playback.SleepTimerMode
+import com.elg.music.playback.SleepTimerRequest
+import com.elg.music.playback.SleepTimerState
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import kotlinx.coroutines.launch
+import java.util.Locale
+
+/**
+ * Feuille « Minuteur de sommeil » : durée (15, 30, 45, 60 min ou fin de la piste), option de fondu
+ * sonore, démarrage et annulation. Utilisée par Réglages et par le menu du grand lecteur.
+ *
+ * La feuille n'arrête rien elle-même : elle envoie l'ordre à [SleepTimerHub], exécuté par le
+ * minuteur du service de lecture. La durée choisie devient la durée par défaut (DataStore), et
+ * « fin de la piste » est enregistrée comme 0.
+ */
+object SleepTimerSheet {
+
+    fun show(activity: AppCompatActivity) {
+        val repository = SettingsRepository(activity)
+        activity.lifecycleScope.launch {
+            val settings = repository.current()
+            open(activity, repository, settings.sleepTimerDefaultMin, settings.fadeOutEnabled)
+        }
+    }
+
+    private fun open(
+        activity: AppCompatActivity,
+        repository: SettingsRepository,
+        defaultMinutes: Int,
+        fadeEnabled: Boolean
+    ) {
+        if (activity.isFinishing || activity.isDestroyed) return
+        val binding = LayoutSleepTimerSheetBinding.inflate(LayoutInflater.from(activity))
+        val dialog = BottomSheetDialog(activity)
+        dialog.setContentView(binding.root)
+        dialog.setOnShowListener { dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED }
+
+        binding.radioGroupSleep.check(
+            when (defaultMinutes) {
+                0 -> R.id.radioSleepEnd
+                15 -> R.id.radioSleep15
+                45 -> R.id.radioSleep45
+                60 -> R.id.radioSleep60
+                else -> R.id.radioSleep30
+            }
+        )
+        binding.switchSleepFade.isChecked = fadeEnabled
+        binding.switchSleepFade.setOnCheckedChangeListener { _, checked ->
+            activity.lifecycleScope.launch { repository.setFadeOutEnabled(checked) }
+        }
+
+        binding.buttonSleepStart.setOnClickListener {
+            val minutes = when (binding.radioGroupSleep.checkedRadioButtonId) {
+                R.id.radioSleepEnd -> 0
+                R.id.radioSleep15 -> 15
+                R.id.radioSleep45 -> 45
+                R.id.radioSleep60 -> 60
+                else -> 30
+            }
+            activity.lifecycleScope.launch { repository.setSleepTimerDefaultMin(minutes) }
+            val request = if (minutes == 0) {
+                SleepTimerRequest.StartEndOfTrack
+            } else {
+                SleepTimerRequest.StartCountdown(minutes)
+            }
+            if (SleepTimerHub.send(request)) {
+                val message = if (minutes == 0) {
+                    activity.getString(R.string.sleep_timer_started_end)
+                } else {
+                    activity.getString(R.string.sleep_timer_started_minutes, minutes)
+                }
+                Toast.makeText(activity, message, Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            } else {
+                binding.textSleepStatus.setText(R.string.sleep_timer_no_playback)
+            }
+        }
+        binding.buttonSleepCancel.setOnClickListener {
+            SleepTimerHub.send(SleepTimerRequest.Cancel)
+            Toast.makeText(activity, R.string.sleep_timer_cancelled, Toast.LENGTH_SHORT).show()
+            dialog.dismiss()
+        }
+
+        fun render(state: SleepTimerState) {
+            binding.buttonSleepCancel.visibility = if (state.isActive) View.VISIBLE else View.GONE
+            binding.textSleepFading.visibility = if (state.fading) View.VISIBLE else View.GONE
+            binding.textSleepStatus.text = when (state.mode) {
+                SleepTimerMode.COUNTDOWN ->
+                    activity.getString(R.string.sleep_timer_status_countdown, formatTime(state.remainingMs))
+                SleepTimerMode.END_OF_TRACK ->
+                    if (state.remainingMs > 0L) {
+                        activity.getString(
+                            R.string.sleep_timer_status_end_of_track_remaining,
+                            formatTime(state.remainingMs)
+                        )
+                    } else {
+                        activity.getString(R.string.sleep_timer_status_end_of_track)
+                    }
+                SleepTimerMode.IDLE ->
+                    activity.getString(
+                        if (SleepTimerHub.isServiceAttached) {
+                            R.string.sleep_timer_status_idle
+                        } else {
+                            R.string.sleep_timer_no_playback
+                        }
+                    )
+            }
+        }
+
+        val observeJob = activity.lifecycleScope.launch {
+            SleepTimerHub.state.collect { state -> render(state) }
+        }
+        dialog.setOnDismissListener { observeJob.cancel() }
+        dialog.show()
+    }
+
+    private fun formatTime(ms: Long): String {
+        val totalSeconds = ((ms + 999L) / 1000L).coerceAtLeast(0L)
+        val hours = totalSeconds / 3600L
+        val minutes = (totalSeconds % 3600L) / 60L
+        val seconds = totalSeconds % 60L
+        return if (hours > 0L) {
+            String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
+        }
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/ui/player/AbLoopSheet.kt"
+mkdir -p app/src/main/java/com/elg/music/ui/player
+cat << 'EOF' > app/src/main/java/com/elg/music/ui/player/AbLoopSheet.kt
+package com.elg.music.ui.player
+
+import android.view.LayoutInflater
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.elg.music.R
+import com.elg.music.databinding.LayoutAbLoopSheetBinding
+import com.elg.music.playback.AbLoopHub
+import com.elg.music.playback.AbLoopRequest
+import com.elg.music.playback.AbLoopResult
+import com.elg.music.playback.AbLoopState
+import com.elg.music.playback.PlaybackUiState
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import java.util.Locale
+
+/**
+ * Feuille « Boucle A-B » : marquer le début (A) et la fin (B) d'un passage pendant la lecture,
+ * activer ou désactiver la répétition en boucle, effacer. La position actuelle est affichée en direct
+ * pour aider à placer les points. Les ordres passent par [AbLoopHub] (contrôleur du service de lecture).
+ *
+ * @param playback état de lecture, pour afficher la position actuelle.
+ */
+object AbLoopSheet {
+
+    fun show(activity: AppCompatActivity, playback: StateFlow<PlaybackUiState>) {
+        val binding = LayoutAbLoopSheetBinding.inflate(LayoutInflater.from(activity))
+        val dialog = BottomSheetDialog(activity)
+        dialog.setContentView(binding.root)
+        dialog.setOnShowListener { dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED }
+
+        var rendering = false
+
+        fun render(state: AbLoopState) {
+            rendering = true
+            val unset = activity.getString(R.string.ab_loop_not_set)
+            binding.textAbPointA.text = activity.getString(
+                R.string.ab_loop_point_a_format, state.aMs?.let(::formatTenths) ?: unset
+            )
+            binding.textAbPointB.text = activity.getString(
+                R.string.ab_loop_point_b_format, state.bMs?.let(::formatTenths) ?: unset
+            )
+            binding.switchAbRepeat.isEnabled = state.isComplete
+            binding.switchAbRepeat.isChecked = state.enabled
+            binding.buttonAbClear.isEnabled = state.aMs != null || state.bMs != null
+            rendering = false
+        }
+
+        fun report(result: AbLoopResult) {
+            val messageRes = when (result) {
+                AbLoopResult.OK -> null
+                AbLoopResult.NOT_ATTACHED, AbLoopResult.NO_TRACK -> R.string.ab_loop_error_no_track
+                AbLoopResult.NEEDS_A -> R.string.ab_loop_error_needs_a
+                AbLoopResult.TOO_SHORT -> R.string.ab_loop_error_too_short
+                AbLoopResult.INCOMPLETE -> R.string.ab_loop_error_incomplete
+            }
+            if (messageRes != null) Toast.makeText(activity, messageRes, Toast.LENGTH_SHORT).show()
+            render(AbLoopHub.state.value)
+        }
+
+        binding.buttonAbMarkA.setOnClickListener { report(AbLoopHub.send(AbLoopRequest.MarkA)) }
+        binding.buttonAbMarkB.setOnClickListener { report(AbLoopHub.send(AbLoopRequest.MarkB)) }
+        binding.switchAbRepeat.setOnCheckedChangeListener { _, checked ->
+            if (!rendering) report(AbLoopHub.send(AbLoopRequest.SetEnabled(checked)))
+        }
+        binding.buttonAbClear.setOnClickListener {
+            report(AbLoopHub.send(AbLoopRequest.Clear))
+            Toast.makeText(activity, R.string.ab_loop_cleared_message, Toast.LENGTH_SHORT).show()
+        }
+
+        val stateJob = activity.lifecycleScope.launch {
+            AbLoopHub.state.collect { state -> render(state) }
+        }
+        val positionJob = activity.lifecycleScope.launch {
+            playback.collect { state ->
+                binding.textAbPosition.text =
+                    activity.getString(R.string.ab_loop_position_format, formatTenths(state.positionMs))
+            }
+        }
+        dialog.setOnDismissListener {
+            stateJob.cancel()
+            positionJob.cancel()
+        }
+        dialog.show()
+    }
+
+    /** « 1:23.4 » : minutes, secondes et dixièmes. */
+    private fun formatTenths(ms: Long): String {
+        val safe = ms.coerceAtLeast(0L)
+        val totalSeconds = safe / 1000L
+        val tenths = (safe % 1000L) / 100L
+        return String.format(Locale.getDefault(), "%d:%02d.%d", totalSeconds / 60L, totalSeconds % 60L, tenths)
+    }
+}
+EOF
+
+echo "  -> app/src/main/res/layout/layout_sleep_timer_sheet.xml"
+mkdir -p app/src/main/res/layout
+cat << 'EOF' > app/src/main/res/layout/layout_sleep_timer_sheet.xml
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Feuille « Minuteur de sommeil » : statut, durée, fondu sonore, démarrer / annuler. -->
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="24dp"
+        android:paddingTop="16dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:accessibilityHeading="true"
+            android:text="@string/sleep_timer_title"
+            android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+        <TextView
+            android:id="@+id/textSleepStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textColor="?attr/colorPrimary" />
+
+        <TextView
+            android:id="@+id/textSleepFading"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="@string/sleep_timer_fading"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:visibility="gone" />
+
+        <RadioGroup
+            android:id="@+id/radioGroupSleep"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="vertical">
+
+            <com.google.android.material.radiobutton.MaterialRadioButton
+                android:id="@+id/radioSleep15"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/sleep_timer_option_15" />
+
+            <com.google.android.material.radiobutton.MaterialRadioButton
+                android:id="@+id/radioSleep30"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/sleep_timer_option_30" />
+
+            <com.google.android.material.radiobutton.MaterialRadioButton
+                android:id="@+id/radioSleep45"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/sleep_timer_option_45" />
+
+            <com.google.android.material.radiobutton.MaterialRadioButton
+                android:id="@+id/radioSleep60"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/sleep_timer_option_60" />
+
+            <com.google.android.material.radiobutton.MaterialRadioButton
+                android:id="@+id/radioSleepEnd"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/sleep_timer_option_end" />
+
+        </RadioGroup>
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchSleepFade"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:minHeight="48dp"
+            android:text="@string/sleep_timer_fade_switch"
+            android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/buttonSleepStart"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/sleep_timer_start" />
+
+            <Button
+                android:id="@+id/buttonSleepCancel"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:minHeight="48dp"
+                android:text="@string/sleep_timer_cancel"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>
+EOF
+
+echo "  -> app/src/main/res/layout/layout_ab_loop_sheet.xml"
+mkdir -p app/src/main/res/layout
+cat << 'EOF' > app/src/main/res/layout/layout_ab_loop_sheet.xml
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Feuille « Boucle A-B » : position actuelle, points A et B, marquer, répéter, effacer. -->
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="24dp"
+        android:paddingTop="16dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:accessibilityHeading="true"
+            android:text="@string/ab_loop_title"
+            android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+        <TextView
+            android:id="@+id/textAbHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/ab_loop_hint"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textColor="?attr/colorOnSurfaceVariant" />
+
+        <TextView
+            android:id="@+id/textAbPosition"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:textAppearance="?attr/textAppearanceBodyLarge"
+            android:textColor="?attr/colorPrimary" />
+
+        <TextView
+            android:id="@+id/textAbPointA"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+        <TextView
+            android:id="@+id/textAbPointB"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/buttonAbMarkA"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="48dp"
+                android:text="@string/ab_loop_mark_a" />
+
+            <Button
+                android:id="@+id/buttonAbMarkB"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:minHeight="48dp"
+                android:text="@string/ab_loop_mark_b" />
+
+        </LinearLayout>
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchAbRepeat"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:enabled="false"
+            android:minHeight="48dp"
+            android:text="@string/ab_loop_repeat_switch"
+            android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+        <Button
+            android:id="@+id/buttonAbClear"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="@string/ab_loop_clear" />
+
+    </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>
+EOF
+
 echo "  -> app/debug.keystore"
 mkdir -p app
 base64 -d << 'EOF' > app/debug.keystore
@@ -9261,6 +10345,13 @@ if [ ! -f "app/src/main/res/layout/activity_vault.xml" ]; then echo "MANQUANT: a
 if [ ! -f "app/src/main/res/menu/menu_vault.xml" ]; then echo "MANQUANT: app/src/main/res/menu/menu_vault.xml"; MISSING=1; fi
 if [ ! -f "app/src/main/res/menu/menu_vault_item.xml" ]; then echo "MANQUANT: app/src/main/res/menu/menu_vault_item.xml"; MISSING=1; fi
 if [ ! -f "app/src/main/res/xml/data_extraction_rules.xml" ]; then echo "MANQUANT: app/src/main/res/xml/data_extraction_rules.xml"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/playback/SleepTimerHub.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/playback/SleepTimerHub.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/playback/SleepTimerController.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/playback/SleepTimerController.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/playback/AbLoopController.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/playback/AbLoopController.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/ui/player/SleepTimerSheet.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/player/SleepTimerSheet.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/ui/player/AbLoopSheet.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/player/AbLoopSheet.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/res/layout/layout_sleep_timer_sheet.xml" ]; then echo "MANQUANT: app/src/main/res/layout/layout_sleep_timer_sheet.xml"; MISSING=1; fi
+if [ ! -f "app/src/main/res/layout/layout_ab_loop_sheet.xml" ]; then echo "MANQUANT: app/src/main/res/layout/layout_ab_loop_sheet.xml"; MISSING=1; fi
 if [ ! -f "app/build.gradle" ]; then echo "MANQUANT: app/build.gradle"; MISSING=1; fi
 if [ ! -f "app/src/main/java/com/elg/music/ui/main/MainActivity.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/main/MainActivity.kt"; MISSING=1; fi
 if [ ! -f "app/src/main/java/com/elg/music/playback/MusicPlaybackService.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/playback/MusicPlaybackService.kt"; MISSING=1; fi
