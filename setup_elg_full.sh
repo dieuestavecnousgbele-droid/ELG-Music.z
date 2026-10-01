@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-echo "=== ELG Music v1.04 : projet complet + workflow GitHub Actions ==="
+echo "=== ELG Music v1.04 (etape 3 : moteur audio & DSP) : projet complet + workflow GitHub Actions ==="
 echo "(a lancer depuis la racine du depot, dans un terminal Linux standard)"
 echo ""
 
@@ -23,7 +23,7 @@ mkdir -p app/src/main/res/mipmap-anydpi
 mkdir -p app/src/main/res/values
 mkdir -p app/src/main/res/xml
 
-echo "[2/3] Ecriture des 87 fichiers..."
+echo "[2/3] Ecriture des 92 fichiers..."
 echo "  -> settings.gradle"
 cat << 'EOF' > settings.gradle
 include ':app'
@@ -89,7 +89,7 @@ android {
         applicationId 'com.elg.music'
         minSdk 33
         targetSdk 36
-        versionCode 5
+        versionCode 6
         versionName '1.04'
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
@@ -185,6 +185,9 @@ cat << 'EOF' > app/src/main/AndroidManifest.xml
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- ===================== EFFETS AUDIO (égaliseur, bass boost, virtualizer) ===================== -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
     <!-- ===================== BLUETOOTH (reprise automatique) ===================== -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
@@ -245,6 +248,13 @@ cat << 'EOF' > app/src/main/AndroidManifest.xml
             android:exported="false"
             android:label="@string/settings_title"
             android:parentActivityName=".ui.main.MainActivity" />
+
+        <!-- Audio & effets : vitesse, pitch, égaliseur, bass boost, virtualizer -->
+        <activity
+            android:name=".ui.settings.AudioSettingsActivity"
+            android:exported="false"
+            android:label="@string/audio_settings_title"
+            android:parentActivityName=".ui.settings.SettingsActivity" />
 
         <!-- Service de lecture audio (Media3 / MediaSessionService) -->
         <service
@@ -490,6 +500,43 @@ cat << 'EOF' > app/src/main/res/values/strings.xml
     <string name="about_error_no_app">Aucune application disponible pour ouvrir ce lien.</string>
     <string name="about_error_no_email_app">Aucune application e-mail disponible.</string>
 
+    <!-- ===================== AUDIO & EFFETS (v1.4, étape 3) ===================== -->
+    <string name="settings_category_audio">Audio</string>
+    <string name="settings_audio_title">Vitesse, tonalité et égaliseur</string>
+    <string name="settings_audio_summary">Pitch, vitesse, égaliseur 5 bandes, bass boost et spatialisation 3D</string>
+    <string name="audio_settings_title">Audio &amp; effets</string>
+    <string name="audio_section_speed_pitch">Vitesse et tonalité</string>
+    <string name="audio_speed_label">Vitesse de lecture</string>
+    <string name="audio_pitch_label">Tonalité (pitch)</string>
+    <string name="speed_preset_normal">Normal</string>
+    <string name="speed_preset_nightcore">Nightcore</string>
+    <string name="speed_preset_deep_voice">Deep Voice / Slowed</string>
+    <string name="speed_preset_dictation">Dictée / Apprentissage</string>
+    <string name="audio_section_equalizer">Égaliseur</string>
+    <string name="audio_equalizer_switch">Activer l\'égaliseur</string>
+    <string name="eq_preset_button_format">Préréglage : %1$s</string>
+    <string name="eq_preset_dialog_title">Préréglage de l\'égaliseur</string>
+    <string name="eq_preset_flat">Flat</string>
+    <string name="eq_preset_bass">Bass</string>
+    <string name="eq_preset_rock">Rock</string>
+    <string name="eq_preset_pop">Pop</string>
+    <string name="eq_preset_jazz">Jazz</string>
+    <string name="eq_preset_vocal">Vocal</string>
+    <string name="eq_preset_custom">Custom</string>
+    <string-array name="eq_band_labels" translatable="false">
+        <item>60 Hz</item>
+        <item>230 Hz</item>
+        <item>910 Hz</item>
+        <item>3,6 kHz</item>
+        <item>14 kHz</item>
+    </string-array>
+    <string name="audio_section_effects">Effets sonores</string>
+    <string name="audio_bass_boost_label">Bass Boost</string>
+    <string name="audio_virtualizer_label">Spatialisation 3D (Virtualizer)</string>
+    <string name="audio_effects_note">Les effets dépendent du matériel de l\'appareil : sur certains modèles, un effet peut être limité ou indisponible. Ils ne s\'appliquent pas aux fichiers MIDI.</string>
+    <string name="audio_reset_button">Réinitialiser l\'audio</string>
+    <string name="audio_reset_done_message">Réglages audio réinitialisés</string>
+
 </resources>
 EOF
 
@@ -519,6 +566,15 @@ cat << 'EOF' > app/src/main/res/xml/root_preferences.xml
             app:entryValues="@array/theme_values"
             app:defaultValue="system"
             app:icon="@drawable/ic_settings" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/settings_category_audio">
+
+        <Preference
+            app:key="pref_audio"
+            app:title="@string/settings_audio_title"
+            app:summary="@string/settings_audio_summary" />
 
     </PreferenceCategory>
 
@@ -2116,12 +2172,16 @@ import com.google.common.util.concurrent.ListenableFuture
  *
  * Les fichiers MIDI, que ExoPlayer ne décode pas, sont pris en charge par [MidiCompanion] et
  * [MidiSupport] : ils sont lus par le MediaPlayer natif d'Android.
+ *
+ * [AudioEffectsController] applique en direct les réglages de l'écran « Audio & effets » :
+ * vitesse, pitch, égaliseur, bass boost et virtualizer.
  */
 class MusicPlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
     private var artworkLoader: ArtworkBitmapLoader? = null
     private var midiCompanion: MidiCompanion? = null
+    private var audioEffects: AudioEffectsController? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -2149,6 +2209,10 @@ class MusicPlaybackService : MediaSessionService() {
         val companion = MidiCompanion(this, player)
         companion.attach()
         midiCompanion = companion
+
+        val effects = AudioEffectsController(this, player)
+        effects.attach()
+        audioEffects = effects
 
         val sessionCallback = object : MediaSession.Callback {
             override fun onAddMediaItems(
@@ -2181,6 +2245,8 @@ class MusicPlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        audioEffects?.release()
+        audioEffects = null
         midiCompanion?.release()
         midiCompanion = null
         mediaSession?.let { session ->
@@ -3939,6 +4005,7 @@ mkdir -p app/src/main/java/com/elg/music/ui/settings
 cat << 'EOF' > app/src/main/java/com/elg/music/ui/settings/SettingsFragment.kt
 package com.elg.music.ui.settings
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.preference.ListPreference
@@ -3965,6 +4032,11 @@ class SettingsFragment : PreferenceFragmentCompat() {
             true
         }
 
+        findPreference<Preference>(KEY_AUDIO)?.setOnPreferenceClickListener {
+            startActivity(Intent(requireContext(), AudioSettingsActivity::class.java))
+            true
+        }
+
         findPreference<Preference>(KEY_ABOUT)?.setOnPreferenceClickListener {
             AboutDialog().show(parentFragmentManager, AboutDialog.TAG)
             true
@@ -3983,6 +4055,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
     companion object {
         const val KEY_THEME = "pref_theme"
         const val KEY_ABOUT = "pref_about"
+        const val KEY_AUDIO = "pref_audio"
         private const val THEME_LIGHT = "light"
         private const val THEME_DARK = "dark"
     }
@@ -6629,6 +6702,22 @@ class SettingsRepository(context: Context) {
         store.edit { it[KEY_DRIVE_MODE_THEME] = theme }
     }
 
+    /** Applique vitesse et pitch en une seule écriture (préréglages Nightcore, Deep Voice, Dictée). */
+    suspend fun setSpeedAndPitch(speed: Float, pitch: Float) {
+        store.edit {
+            it[KEY_PLAYBACK_SPEED] = speed.coerceIn(MIN_SPEED, MAX_SPEED)
+            it[KEY_PLAYBACK_PITCH] = pitch.coerceIn(MIN_PITCH, MAX_PITCH)
+        }
+    }
+
+    /** Active l'égaliseur et applique d'un coup les niveaux d'un préréglage. */
+    suspend fun setEqualizerPreset(levels: List<Int>) {
+        store.edit {
+            it[KEY_EQUALIZER_ENABLED] = true
+            it[KEY_BAND_LEVELS] = normalizeBands(levels).joinToString(",")
+        }
+    }
+
     /** Remplace tous les réglages d'un coup (restauration depuis `elg_settings_config.json`). */
     suspend fun replaceAll(settings: AppSettings) {
         store.edit { prefs ->
@@ -6939,6 +7028,746 @@ cat << 'EOF' > app/src/main/res/menu/menu_player_options.xml
 </menu>
 EOF
 
+echo "  -> app/src/main/java/com/elg/music/data/local/AudioPresets.kt"
+mkdir -p app/src/main/java/com/elg/music/data/local
+cat << 'EOF' > app/src/main/java/com/elg/music/data/local/AudioPresets.kt
+package com.elg.music.data.local
+
+import androidx.annotation.StringRes
+import com.elg.music.R
+
+/**
+ * Plages des réglages audio avancés (CLAUDE.md, section 3.B) : vitesse de 0,25x à 2,5x,
+ * pitch de 0,5x à 2,0x, niveaux de l'égaliseur de -15 à +15 dB, pas de 0,05 pour la vitesse et le pitch.
+ */
+object AudioRanges {
+    const val MIN_SPEED = 0.25f
+    const val MAX_SPEED = 2.5f
+    const val MIN_PITCH = 0.5f
+    const val MAX_PITCH = 2.0f
+    const val STEP = 0.05f
+    const val MAX_BAND_DB = 15
+
+    /** Fréquences centrales des 5 bandes de l'égaliseur, en Hz (60 Hz, 230 Hz, 910 Hz, 3,6 kHz, 14 kHz). */
+    val BAND_FREQUENCIES_HZ = intArrayOf(60, 230, 910, 3600, 14000)
+}
+
+/**
+ * Préréglages de l'égaliseur graphique 5 bandes (niveaux en dB, dans l'ordre 60 Hz → 14 kHz).
+ * [CUSTOM] n'a pas de niveaux propres : il désigne tout réglage qui ne correspond à aucun préréglage.
+ */
+enum class EqPreset(@StringRes val labelRes: Int, val levels: List<Int>?) {
+    FLAT(R.string.eq_preset_flat, listOf(0, 0, 0, 0, 0)),
+    BASS(R.string.eq_preset_bass, listOf(6, 4, 1, 0, 0)),
+    ROCK(R.string.eq_preset_rock, listOf(5, 3, -1, 3, 5)),
+    POP(R.string.eq_preset_pop, listOf(-1, 2, 4, 2, -1)),
+    JAZZ(R.string.eq_preset_jazz, listOf(4, 2, -2, 2, 4)),
+    VOCAL(R.string.eq_preset_vocal, listOf(-2, 0, 3, 4, 1)),
+    CUSTOM(R.string.eq_preset_custom, null);
+
+    companion object {
+        /** Préréglage dont les niveaux sont exactement [levels] ; [CUSTOM] si aucun ne correspond. */
+        fun match(levels: List<Int>): EqPreset =
+            entries.firstOrNull { it.levels != null && it.levels == levels } ?: CUSTOM
+    }
+}
+
+/** Préréglages rapides de vitesse et de pitch (CLAUDE.md, section 3.B). */
+enum class SpeedPreset(@StringRes val labelRes: Int, val speed: Float, val pitch: Float) {
+    NORMAL(R.string.speed_preset_normal, 1.00f, 1.00f),
+    NIGHTCORE(R.string.speed_preset_nightcore, 1.20f, 1.20f),
+    DEEP_VOICE(R.string.speed_preset_deep_voice, 0.85f, 0.80f),
+    DICTATION(R.string.speed_preset_dictation, 0.75f, 1.00f)
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/playback/AudioEffectsController.kt"
+mkdir -p app/src/main/java/com/elg/music/playback
+cat << 'EOF' > app/src/main/java/com/elg/music/playback/AudioEffectsController.kt
+package com.elg.music.playback
+
+import android.content.Context
+import android.media.audiofx.BassBoost
+import android.media.audiofx.Equalizer
+import android.media.audiofx.Virtualizer
+import androidx.media3.common.C
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import com.elg.music.data.local.AppSettings
+import com.elg.music.data.local.AudioRanges
+import com.elg.music.data.local.SettingsRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.ln
+
+/**
+ * Moteur audio avancé (étape 3 de la v1.4) : applique au lecteur de [MusicPlaybackService]
+ * les réglages enregistrés dans [SettingsRepository].
+ *
+ *  - Vitesse et pitch : `PlaybackParameters` d'ExoPlayer (traitement Sonic intégré, sans effet de bord
+ *    sur la file d'attente : les réglages restent d'un morceau à l'autre).
+ *  - Égaliseur 5 bandes, Bass Boost et Virtualizer : effets `android.media.audiofx` attachés à la
+ *    session audio d'ExoPlayer. Ils sont recréés si la session audio change.
+ *
+ * Le contrôleur observe les réglages (flux DataStore) : l'écran Audio n'a qu'à les écrire, et le
+ * changement est entendu aussitôt, même si l'écran est ensuite fermé. Les effets matériels varient
+ * selon les appareils : chaque appel est protégé, un effet non pris en charge reste simplement inactif.
+ *
+ * À utiliser sur le thread principal (celui d'ExoPlayer dans le service).
+ */
+class AudioEffectsController(
+    context: Context,
+    private val player: ExoPlayer
+) : Player.Listener {
+
+    private val repository = SettingsRepository(context)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var collectJob: Job? = null
+
+    private var equalizer: Equalizer? = null
+    private var bassBoost: BassBoost? = null
+    private var virtualizer: Virtualizer? = null
+    private var boundSessionId = C.AUDIO_SESSION_ID_UNSET
+    private var latest = AppSettings()
+
+    fun attach() {
+        player.addListener(this)
+        bindSession(player.audioSessionId)
+        collectJob = scope.launch {
+            repository.settings.collect { settings ->
+                latest = settings
+                applyPlayback(settings)
+                applyEffects(settings)
+            }
+        }
+    }
+
+    fun release() {
+        collectJob?.cancel()
+        collectJob = null
+        player.removeListener(this)
+        releaseEffects()
+        scope.cancel()
+    }
+
+    override fun onAudioSessionIdChanged(audioSessionId: Int) {
+        bindSession(audioSessionId)
+    }
+
+    // ===================== Session audio et effets =====================
+
+    private fun bindSession(sessionId: Int) {
+        if (sessionId == boundSessionId) return
+        releaseEffects()
+        boundSessionId = sessionId
+        if (sessionId == C.AUDIO_SESSION_ID_UNSET) return
+        equalizer = createEffect { Equalizer(0, sessionId) }
+        bassBoost = createEffect { BassBoost(0, sessionId) }
+        virtualizer = createEffect { Virtualizer(0, sessionId) }
+        applyEffects(latest)
+    }
+
+    private inline fun <T> createEffect(factory: () -> T): T? =
+        try {
+            factory()
+        } catch (unsupported: RuntimeException) {
+            null
+        }
+
+    private fun releaseEffects() {
+        equalizer?.let { effect -> runCatching { effect.release() } }
+        bassBoost?.let { effect -> runCatching { effect.release() } }
+        virtualizer?.let { effect -> runCatching { effect.release() } }
+        equalizer = null
+        bassBoost = null
+        virtualizer = null
+    }
+
+    // ===================== Application des réglages =====================
+
+    private fun applyPlayback(settings: AppSettings) {
+        val target = PlaybackParameters(settings.playbackSpeed, settings.playbackPitch)
+        if (player.playbackParameters != target) {
+            player.setPlaybackParameters(target)
+        }
+    }
+
+    private fun applyEffects(settings: AppSettings) {
+        equalizer?.let { applyEqualizer(it, settings) }
+        bassBoost?.let { applyBassBoost(it, settings.bassBoost) }
+        virtualizer?.let { applyVirtualizer(it, settings.virtualizer) }
+    }
+
+    /**
+     * Les 5 niveaux réglés par l'utilisateur sont répartis sur les bandes réelles de l'appareil :
+     * chaque bande matérielle reçoit le niveau de la bande réglable dont la fréquence est la plus proche.
+     */
+    private fun applyEqualizer(effect: Equalizer, settings: AppSettings) {
+        try {
+            val range = effect.bandLevelRange
+            val minMillibel = range[0].toInt()
+            val maxMillibel = range[1].toInt()
+            val bandCount = effect.numberOfBands.toInt()
+            for (band in 0 until bandCount) {
+                val centerHz = effect.getCenterFreq(band.toShort()) / 1000
+                val sourceIndex = nearestBandIndex(centerHz)
+                val levelDb = settings.bandLevels.getOrNull(sourceIndex) ?: 0
+                val levelMillibel = (levelDb * 100).coerceIn(minMillibel, maxMillibel)
+                effect.setBandLevel(band.toShort(), levelMillibel.toShort())
+            }
+            effect.setEnabled(settings.equalizerEnabled)
+        } catch (unsupported: RuntimeException) {
+            // Effet indisponible sur cet appareil : reste inactif.
+        }
+    }
+
+    private fun applyBassBoost(effect: BassBoost, percent: Int) {
+        try {
+            if (effect.getStrengthSupported()) {
+                effect.setStrength((percent.coerceIn(0, 100) * 10).toShort())
+            }
+            effect.setEnabled(percent > 0)
+        } catch (unsupported: RuntimeException) {
+            // Effet indisponible sur cet appareil : reste inactif.
+        }
+    }
+
+    private fun applyVirtualizer(effect: Virtualizer, percent: Int) {
+        try {
+            if (effect.getStrengthSupported()) {
+                effect.setStrength((percent.coerceIn(0, 100) * 10).toShort())
+            }
+            effect.setEnabled(percent > 0)
+        } catch (unsupported: RuntimeException) {
+            // Effet indisponible sur cet appareil : reste inactif.
+        }
+    }
+
+    /** Indice (0 à 4) de la bande réglable dont la fréquence est la plus proche de [centerHz], à l'échelle logarithmique. */
+    private fun nearestBandIndex(centerHz: Int): Int {
+        val safeHz = centerHz.coerceAtLeast(1).toDouble()
+        var bestIndex = 0
+        var bestDistance = Double.MAX_VALUE
+        AudioRanges.BAND_FREQUENCIES_HZ.forEachIndexed { index, targetHz ->
+            val distance = abs(ln(safeHz / targetHz.toDouble()))
+            if (distance < bestDistance) {
+                bestDistance = distance
+                bestIndex = index
+            }
+        }
+        return bestIndex
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/ui/settings/AudioSettingsActivity.kt"
+mkdir -p app/src/main/java/com/elg/music/ui/settings
+cat << 'EOF' > app/src/main/java/com/elg/music/ui/settings/AudioSettingsActivity.kt
+package com.elg.music.ui.settings
+
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.ViewGroup
+import android.widget.SeekBar
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.elg.music.R
+import com.elg.music.data.local.AppSettings
+import com.elg.music.data.local.AudioRanges
+import com.elg.music.data.local.EqPreset
+import com.elg.music.data.local.SettingsRepository
+import com.elg.music.data.local.SpeedPreset
+import com.elg.music.databinding.ActivityAudioSettingsBinding
+import com.elg.music.databinding.ItemSliderRowBinding
+import com.elg.music.ui.applySystemBarPadding
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.launch
+import java.util.Locale
+import kotlin.math.roundToInt
+
+/**
+ * Écran « Audio & effets » (étape 3 de la v1.4) : vitesse et pitch avec préréglages rapides,
+ * égaliseur 5 bandes avec préréglages, Bass Boost et Virtualizer.
+ *
+ * L'écran ne parle pas directement au lecteur : il écrit dans [SettingsRepository] (DataStore) et
+ * `AudioEffectsController`, dans le service de lecture, applique les valeurs en direct.
+ */
+class AudioSettingsActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityAudioSettingsBinding
+    private lateinit var repository: SettingsRepository
+    private lateinit var speedRow: SliderRow
+    private lateinit var pitchRow: SliderRow
+    private lateinit var bassRow: SliderRow
+    private lateinit var virtualizerRow: SliderRow
+    private val bandRows = ArrayList<SliderRow>()
+
+    private var latest = AppSettings()
+    private var rendering = false
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityAudioSettingsBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        binding.root.applySystemBarPadding()
+
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        binding.toolbar.setNavigationContentDescription(R.string.settings_back_description)
+
+        repository = SettingsRepository(this)
+        buildRows()
+        setupControls()
+        observeSettings()
+    }
+
+    override fun onSupportNavigateUp(): Boolean {
+        finish()
+        return true
+    }
+
+    // ===================== Construction de l'écran =====================
+
+    private fun buildRows() {
+        val inflater = layoutInflater
+
+        speedRow = SliderRow(
+            inflater, binding.layoutSpeedPitch, getString(R.string.audio_speed_label),
+            maxProgress = progressForSpeed(AudioRanges.MAX_SPEED),
+            format = { progress -> formatMultiplier(speedForProgress(progress)) }
+        ) { progress ->
+            val speed = speedForProgress(progress)
+            latest = latest.copy(playbackSpeed = speed)
+            lifecycleScope.launch { repository.setPlaybackSpeed(speed) }
+        }
+
+        pitchRow = SliderRow(
+            inflater, binding.layoutSpeedPitch, getString(R.string.audio_pitch_label),
+            maxProgress = progressForPitch(AudioRanges.MAX_PITCH),
+            format = { progress -> formatMultiplier(pitchForProgress(progress)) }
+        ) { progress ->
+            val pitch = pitchForProgress(progress)
+            latest = latest.copy(playbackPitch = pitch)
+            lifecycleScope.launch { repository.setPlaybackPitch(pitch) }
+        }
+
+        val bandLabels = resources.getStringArray(R.array.eq_band_labels)
+        for (index in 0 until AppSettings.BAND_COUNT) {
+            bandRows.add(
+                SliderRow(
+                    inflater, binding.layoutBands, bandLabels[index],
+                    maxProgress = AudioRanges.MAX_BAND_DB * 2,
+                    format = { progress -> formatDecibels(progress - AudioRanges.MAX_BAND_DB) }
+                ) { progress ->
+                    val levels = latest.bandLevels.toMutableList()
+                    levels[index] = progress - AudioRanges.MAX_BAND_DB
+                    latest = latest.copy(bandLevels = levels)
+                    lifecycleScope.launch { repository.setBandLevels(levels) }
+                }
+            )
+        }
+
+        bassRow = SliderRow(
+            inflater, binding.layoutEffects, getString(R.string.audio_bass_boost_label),
+            maxProgress = 100,
+            format = { progress -> "$progress %" }
+        ) { progress ->
+            latest = latest.copy(bassBoost = progress)
+            lifecycleScope.launch { repository.setBassBoost(progress) }
+        }
+
+        virtualizerRow = SliderRow(
+            inflater, binding.layoutEffects, getString(R.string.audio_virtualizer_label),
+            maxProgress = 100,
+            format = { progress -> "$progress %" }
+        ) { progress ->
+            latest = latest.copy(virtualizer = progress)
+            lifecycleScope.launch { repository.setVirtualizer(progress) }
+        }
+    }
+
+    private fun setupControls() {
+        binding.chipSpeedNormal.setOnClickListener { applySpeedPreset(SpeedPreset.NORMAL) }
+        binding.chipSpeedNightcore.setOnClickListener { applySpeedPreset(SpeedPreset.NIGHTCORE) }
+        binding.chipSpeedDeepVoice.setOnClickListener { applySpeedPreset(SpeedPreset.DEEP_VOICE) }
+        binding.chipSpeedDictation.setOnClickListener { applySpeedPreset(SpeedPreset.DICTATION) }
+
+        binding.switchEqualizer.setOnCheckedChangeListener { _, checked ->
+            if (rendering) return@setOnCheckedChangeListener
+            latest = latest.copy(equalizerEnabled = checked)
+            lifecycleScope.launch { repository.setEqualizerEnabled(checked) }
+        }
+        binding.buttonEqPreset.setOnClickListener { showEqPresetDialog() }
+        binding.buttonResetAudio.setOnClickListener { resetAudio() }
+    }
+
+    private fun observeSettings() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                repository.settings.collect { settings -> render(settings) }
+            }
+        }
+    }
+
+    // ===================== Affichage de l'état =====================
+
+    private fun render(settings: AppSettings) {
+        rendering = true
+        latest = settings
+        speedRow.show(progressForSpeed(settings.playbackSpeed))
+        pitchRow.show(progressForPitch(settings.playbackPitch))
+        bandRows.forEachIndexed { index, row ->
+            row.show((settings.bandLevels.getOrNull(index) ?: 0) + AudioRanges.MAX_BAND_DB)
+        }
+        bassRow.show(settings.bassBoost)
+        virtualizerRow.show(settings.virtualizer)
+        binding.switchEqualizer.isChecked = settings.equalizerEnabled
+        binding.buttonEqPreset.text = getString(
+            R.string.eq_preset_button_format,
+            getString(EqPreset.match(settings.bandLevels).labelRes)
+        )
+        rendering = false
+    }
+
+    // ===================== Actions =====================
+
+    private fun applySpeedPreset(preset: SpeedPreset) {
+        latest = latest.copy(playbackSpeed = preset.speed, playbackPitch = preset.pitch)
+        lifecycleScope.launch { repository.setSpeedAndPitch(preset.speed, preset.pitch) }
+    }
+
+    private fun showEqPresetDialog() {
+        val presets = EqPreset.entries
+        val labels = presets.map { getString(it.labelRes) }.toTypedArray()
+        val checkedIndex = presets.indexOf(EqPreset.match(latest.bandLevels))
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.eq_preset_dialog_title)
+            .setSingleChoiceItems(labels, checkedIndex) { dialog, which ->
+                applyEqPreset(presets[which])
+                dialog.dismiss()
+            }
+            .setNegativeButton(R.string.sort_dialog_cancel, null)
+            .show()
+    }
+
+    /** Choisir un préréglage active l'égaliseur ; « Custom » conserve les niveaux actuels. */
+    private fun applyEqPreset(preset: EqPreset) {
+        val levels = preset.levels ?: latest.bandLevels
+        latest = latest.copy(equalizerEnabled = true, bandLevels = levels)
+        lifecycleScope.launch { repository.setEqualizerPreset(levels) }
+    }
+
+    /** Remet à neutre tout ce que fait cet écran ; minuteur et mode conduite ne sont pas touchés. */
+    private fun resetAudio() {
+        val neutral = latest.copy(
+            equalizerEnabled = false,
+            bandLevels = List(AppSettings.BAND_COUNT) { 0 },
+            bassBoost = 0,
+            virtualizer = 0,
+            playbackSpeed = 1.0f,
+            playbackPitch = 1.0f
+        )
+        latest = neutral
+        lifecycleScope.launch { repository.replaceAll(neutral) }
+        Toast.makeText(this, R.string.audio_reset_done_message, Toast.LENGTH_SHORT).show()
+    }
+
+    // ===================== Conversions curseur <-> valeur =====================
+
+    private fun speedForProgress(progress: Int): Float = roundToStep(AudioRanges.MIN_SPEED + progress * AudioRanges.STEP)
+
+    private fun pitchForProgress(progress: Int): Float = roundToStep(AudioRanges.MIN_PITCH + progress * AudioRanges.STEP)
+
+    private fun progressForSpeed(speed: Float): Int =
+        ((speed - AudioRanges.MIN_SPEED) / AudioRanges.STEP).roundToInt()
+
+    private fun progressForPitch(pitch: Float): Int =
+        ((pitch - AudioRanges.MIN_PITCH) / AudioRanges.STEP).roundToInt()
+
+    private fun roundToStep(value: Float): Float = (value * 100f).roundToInt() / 100f
+
+    private fun formatMultiplier(value: Float): String = String.format(Locale.getDefault(), "%.2fx", value)
+
+    private fun formatDecibels(db: Int): String =
+        if (db == 0) "0 dB" else String.format(Locale.getDefault(), "%+d dB", db)
+
+    /**
+     * Ligne « libellé + valeur + curseur ». Tant que le doigt tient le curseur, l'état relu depuis le
+     * DataStore ne le déplace pas (sinon le curseur sauterait en arrière pendant le glissement).
+     */
+    private class SliderRow(
+        inflater: LayoutInflater,
+        parent: ViewGroup,
+        label: String,
+        maxProgress: Int,
+        private val format: (Int) -> String,
+        private val onUserChange: (Int) -> Unit
+    ) {
+        private val rowBinding = ItemSliderRowBinding.inflate(inflater, parent, false)
+        private var dragging = false
+
+        init {
+            rowBinding.textSliderLabel.text = label
+            rowBinding.seekSlider.max = maxProgress
+            rowBinding.seekSlider.contentDescription = label
+            rowBinding.textSliderValue.text = format(0)
+            rowBinding.seekSlider.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                    val text = format(progress)
+                    rowBinding.textSliderValue.text = text
+                    ViewCompat.setStateDescription(seekBar, text)
+                    if (fromUser) onUserChange(progress)
+                }
+
+                override fun onStartTrackingTouch(seekBar: SeekBar) {
+                    dragging = true
+                }
+
+                override fun onStopTrackingTouch(seekBar: SeekBar) {
+                    dragging = false
+                }
+            })
+            parent.addView(rowBinding.root)
+        }
+
+        fun show(progress: Int) {
+            if (dragging) return
+            rowBinding.seekSlider.progress = progress.coerceIn(0, rowBinding.seekSlider.max)
+        }
+    }
+}
+EOF
+
+echo "  -> app/src/main/res/layout/activity_audio_settings.xml"
+mkdir -p app/src/main/res/layout
+cat << 'EOF' > app/src/main/res/layout/activity_audio_settings.xml
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="0dp"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorSurface"
+        app:title="@string/audio_settings_title"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:clipToPadding="false"
+        android:fillViewport="true"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/toolbar">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="32dp">
+
+            <!-- ===== VITESSE ET TONALITÉ ===== -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:accessibilityHeading="true"
+                android:text="@string/audio_section_speed_pitch"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:textColor="?attr/colorPrimary" />
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/chipGroupSpeedPresets"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                app:chipSpacingHorizontal="8dp">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipSpeedNormal"
+                    style="@style/Widget.Material3.Chip.Assist"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/speed_preset_normal" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipSpeedNightcore"
+                    style="@style/Widget.Material3.Chip.Assist"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/speed_preset_nightcore" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipSpeedDeepVoice"
+                    style="@style/Widget.Material3.Chip.Assist"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/speed_preset_deep_voice" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipSpeedDictation"
+                    style="@style/Widget.Material3.Chip.Assist"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/speed_preset_dictation" />
+
+            </com.google.android.material.chip.ChipGroup>
+
+            <LinearLayout
+                android:id="@+id/layoutSpeedPitch"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <com.google.android.material.divider.MaterialDivider
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp" />
+
+            <!-- ===== ÉGALISEUR ===== -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:accessibilityHeading="true"
+                android:text="@string/audio_section_equalizer"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:textColor="?attr/colorPrimary" />
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/switchEqualizer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:minHeight="48dp"
+                android:text="@string/audio_equalizer_switch"
+                android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+            <Button
+                android:id="@+id/buttonEqPreset"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:minHeight="48dp" />
+
+            <LinearLayout
+                android:id="@+id/layoutBands"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <com.google.android.material.divider.MaterialDivider
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp" />
+
+            <!-- ===== EFFETS SONORES ===== -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:accessibilityHeading="true"
+                android:text="@string/audio_section_effects"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:textColor="?attr/colorPrimary" />
+
+            <LinearLayout
+                android:id="@+id/layoutEffects"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/audio_effects_note"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:textColor="?attr/colorOnSurfaceVariant" />
+
+            <Button
+                android:id="@+id/buttonResetAudio"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:minHeight="48dp"
+                android:text="@string/audio_reset_button" />
+
+        </LinearLayout>
+
+    </androidx.core.widget.NestedScrollView>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
+EOF
+
+echo "  -> app/src/main/res/layout/item_slider_row.xml"
+mkdir -p app/src/main/res/layout
+cat << 'EOF' > app/src/main/res/layout/item_slider_row.xml
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ligne de réglage réutilisable de l'écran Audio : libellé, valeur affichée, curseur. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingTop="8dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/textSliderLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textAppearance="?attr/textAppearanceBodyLarge"
+            tools:text="Vitesse de lecture" />
+
+        <TextView
+            android:id="@+id/textSliderValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:importantForAccessibility="no"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textColor="?attr/colorPrimary"
+            tools:text="1.00x" />
+
+    </LinearLayout>
+
+    <SeekBar
+        android:id="@+id/seekSlider"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="48dp" />
+
+</LinearLayout>
+EOF
+
 echo "  -> app/debug.keystore"
 mkdir -p app
 base64 -d << 'EOF' > app/debug.keystore
@@ -6998,6 +7827,11 @@ if [ ! -f "app/src/main/java/com/elg/music/data/local/SettingsRepository.kt" ]; 
 if [ ! -f "app/src/main/java/com/elg/music/data/local/ElgDatabase.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/local/ElgDatabase.kt"; MISSING=1; fi
 if [ ! -f "app/src/main/java/com/elg/music/ui/main/SongActions.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/main/SongActions.kt"; MISSING=1; fi
 if [ ! -f "app/src/main/res/menu/menu_player_options.xml" ]; then echo "MANQUANT: app/src/main/res/menu/menu_player_options.xml"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/local/AudioPresets.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/local/AudioPresets.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/playback/AudioEffectsController.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/playback/AudioEffectsController.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/ui/settings/AudioSettingsActivity.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/settings/AudioSettingsActivity.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/res/layout/activity_audio_settings.xml" ]; then echo "MANQUANT: app/src/main/res/layout/activity_audio_settings.xml"; MISSING=1; fi
+if [ ! -f "app/src/main/res/layout/item_slider_row.xml" ]; then echo "MANQUANT: app/src/main/res/layout/item_slider_row.xml"; MISSING=1; fi
 if [ ! -f "app/build.gradle" ]; then echo "MANQUANT: app/build.gradle"; MISSING=1; fi
 if [ ! -f "app/src/main/java/com/elg/music/ui/main/MainActivity.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/main/MainActivity.kt"; MISSING=1; fi
 if [ ! -f "app/src/main/java/com/elg/music/playback/MusicPlaybackService.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/playback/MusicPlaybackService.kt"; MISSING=1; fi
