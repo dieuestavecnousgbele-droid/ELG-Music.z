@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-echo "=== ELG Music v1.04 (etape 5 : minuteur de sommeil & boucle A-B) : projet complet + workflow GitHub Actions ==="
+echo "=== ELG Music v1.04 (etape 6 : editeur de tags ID3 Studio Edition) : projet complet + workflow GitHub Actions ==="
 echo "(a lancer depuis la racine du depot, dans un terminal Linux standard)"
 echo ""
 
@@ -23,7 +23,7 @@ mkdir -p app/src/main/res/mipmap-anydpi
 mkdir -p app/src/main/res/values
 mkdir -p app/src/main/res/xml
 
-echo "[2/3] Ecriture des 110 fichiers..."
+echo "[2/3] Ecriture des 117 fichiers..."
 echo "  -> settings.gradle"
 cat << 'EOF' > settings.gradle
 include ':app'
@@ -89,7 +89,7 @@ android {
         applicationId 'com.elg.music'
         minSdk 33
         targetSdk 36
-        versionCode 8
+        versionCode 9
         versionName '1.04'
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
@@ -263,6 +263,14 @@ cat << 'EOF' > app/src/main/AndroidManifest.xml
             android:exported="false"
             android:label="@string/vault_title"
             android:parentActivityName=".ui.settings.SettingsActivity" />
+
+        <!-- Éditeur de tags ID3 « Studio Edition » : avertissement légal, 16 champs, pochette, inspecteur technique -->
+        <activity
+            android:name=".ui.tags.TagEditorActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:exported="false"
+            android:label="@string/tag_editor_title"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- Service de lecture audio (Media3 / MediaSessionService) -->
         <service
@@ -624,6 +632,61 @@ cat << 'EOF' > app/src/main/res/values/strings.xml
     <string name="ab_loop_play_first_message">Lancez d\'abord la lecture de « %1$s » pour définir une boucle A-B.</string>
     <string name="ab_loop_cleared_message">Boucle A-B effacée</string>
 
+    <!-- ===================== ÉDITEUR DE TAGS (v1.4, étape 6) ===================== -->
+    <string name="song_menu_edit_tags">Éditeur de tags…</string>
+    <string name="tag_editor_title">Éditeur de tags</string>
+    <string name="tag_warning_title">Responsabilité &amp; Propriété Intellectuelle</string>
+    <string name="tag_warning_message">Avertissement : Vous êtes l\'unique responsable des modifications apportées aux métadonnées et aux fichiers audio (titre, artiste, droits d\'auteur / copyright). Veillez à respecter la législation sur la propriété intellectuelle.</string>
+    <string name="tag_warning_cancel">Annuler</string>
+    <string name="tag_warning_accept">Compris / J\'accepte</string>
+
+    <string name="tag_cover_description">Pochette de l\'album</string>
+    <string name="tag_cover_change">Changer la pochette</string>
+    <string name="tag_cover_mp3_only">La pochette ne peut être intégrée qu\'aux fichiers MP3.</string>
+    <string name="tag_cover_updated">Nouvelle pochette sélectionnée</string>
+    <string name="tag_cover_error">Impossible de lire cette image.</string>
+    <string name="tag_autofill_button">Remplir automatiquement depuis le nom de fichier</string>
+    <string name="tag_autofill_done">Champs remplis depuis le nom du fichier</string>
+    <string name="tag_autofill_nothing">Aucune information exploitable dans le nom du fichier</string>
+    <string name="tag_non_mp3_note">Ce format ne permet pas l\'écriture des tags dans le fichier : les champs sont conservés par ELG Music, et titre, artiste, album, genre, année, piste et compositeur sont aussi mis à jour dans la bibliothèque Android.</string>
+
+    <string name="tag_section_info">Informations</string>
+    <string name="tag_field_title">Titre</string>
+    <string name="tag_field_artist">Artiste</string>
+    <string name="tag_field_album">Album</string>
+    <string name="tag_field_album_artist">Artiste de l\'album</string>
+    <string name="tag_field_genre">Genre</string>
+    <string name="tag_field_year">Année</string>
+    <string name="tag_field_disc">Numéro de disque</string>
+    <string name="tag_field_track">Numéro de piste</string>
+    <string name="tag_field_track_total">Total pistes</string>
+    <string name="tag_field_composer">Compositeur</string>
+    <string name="tag_field_copyright">Droits d\'auteur (copyright)</string>
+    <string name="tag_field_publisher">Éditeur / Label</string>
+    <string name="tag_field_encoder">Encodeur</string>
+    <string name="tag_field_language">Langue</string>
+    <string name="tag_field_comment">Commentaires</string>
+    <string name="tag_field_lyrics">Paroles de la chanson</string>
+
+    <string name="tag_section_tech">Inspecteur technique</string>
+    <string name="tag_tech_format">Format : %1$s</string>
+    <string name="tag_tech_bitrate">Bitrate : %1$s</string>
+    <string name="tag_tech_sample_rate">Fréquence : %1$s</string>
+    <string name="tag_tech_size">Taille : %1$s (%2$s octets)</string>
+    <string name="tag_tech_path">Chemin : %1$s</string>
+    <string name="tag_tech_unknown">inconnu</string>
+
+    <string name="tag_save">Enregistrer</string>
+    <string name="tag_cancel">Annuler</string>
+    <string name="tag_error_title_empty">Le titre ne peut pas être vide.</string>
+    <string name="tag_error_number">Saisissez uniquement des chiffres (4 au maximum).</string>
+    <string name="tag_load_error">Impossible de lire ce fichier audio.</string>
+    <string name="tag_save_error">Enregistrement impossible : %1$s</string>
+    <string name="tag_write_denied">Autorisation refusée : les tags n\'ont pas été modifiés.</string>
+    <string name="tag_write_refused">Le système a refusé l\'écriture dans ce fichier : les tags n\'ont pas été modifiés.</string>
+    <string name="tag_saved_file">Tags enregistrés dans le fichier</string>
+    <string name="tag_saved_library">Tags enregistrés dans ELG Music et dans la bibliothèque</string>
+
 </resources>
 EOF
 
@@ -893,6 +956,10 @@ cat << 'EOF' > app/src/main/res/menu/menu_song_item.xml
     <item
         android:id="@+id/action_ab_loop"
         android:title="@string/menu_ab_loop" />
+
+    <item
+        android:id="@+id/action_edit_tags"
+        android:title="@string/song_menu_edit_tags" />
 
     <item
         android:id="@+id/action_vault_song"
@@ -1732,6 +1799,7 @@ package com.elg.music.data.repository
 import android.content.ContentUris
 import android.content.Context
 import android.provider.MediaStore
+import com.elg.music.data.local.ElgDatabase
 import com.elg.music.data.model.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -1841,7 +1909,31 @@ class SongRepository(context: Context) {
             }
         }
 
-        songs
+        applyTagOverrides(songs)
+    }
+
+    /**
+     * Applique les tags de l'éditeur aux formats dont le fichier n'a pas pu être modifié (FLAC, M4A, OGG…) :
+     * la bibliothèque affiche alors la dernière saisie, même si le MediaStore relit les anciens tags.
+     */
+    private suspend fun applyTagOverrides(songs: List<Song>): List<Song> {
+        val overrides = try {
+            ElgDatabase.get(appContext).tagDao().getAll().filter { !it.fileWritten }.associateBy { it.mediaId }
+        } catch (error: Exception) {
+            emptyMap()
+        }
+        if (overrides.isEmpty()) return songs
+        return songs.map { song ->
+            val row = overrides[song.id] ?: return@map song
+            val track = row.trackNumber.toIntOrNull()
+            val disc = row.discNumber.toIntOrNull() ?: 0
+            song.copy(
+                title = row.title.ifBlank { song.title },
+                artist = row.artist.ifBlank { null },
+                album = row.album.ifBlank { null },
+                trackNumber = if (track != null) disc * 1000 + track else song.trackNumber
+            )
+        }
     }
 
     private fun isFromExcludedFolder(path: String?): Boolean {
@@ -2214,6 +2306,73 @@ class PlayerController(context: Context) {
         for (index in mediaItemCount - 1 downTo 0) {
             if (getMediaItemAt(index).mediaId == mediaId) removeMediaItem(index)
         }
+    }
+
+    /** Vrai si la lecture du morceau en cours de modification doit reprendre une fois les tags écrits. */
+    private var resumeAfterEdit = false
+
+    /**
+     * À appeler avant de réécrire le fichier d'un morceau (éditeur de tags) : si ce morceau est en cours
+     * de lecture, la lecture est suspendue le temps de l'écriture.
+     */
+    fun pauseForFileEdit(mediaId: String) {
+        val mediaController = controller ?: return
+        resumeAfterEdit = mediaController.isPlaying && mediaController.currentMediaItem?.mediaId == mediaId
+        if (resumeAfterEdit) mediaController.pause()
+    }
+
+    /** Édition abandonnée ou échouée : reprend la lecture si elle avait été suspendue. */
+    fun cancelFileEdit() {
+        if (resumeAfterEdit) controller?.play()
+        resumeAfterEdit = false
+    }
+
+    /**
+     * Répercute de nouveaux titre / artiste / album sur les entrées de la file d'attente. Si le fichier a
+     * été réécrit ([reloadSource]), la file est rechargée à l'identique (même morceau, même position) pour
+     * que le lecteur relise le fichier modifié ; sinon seules les métadonnées sont remplacées, sans coupure.
+     */
+    fun applyEditedMetadata(
+        mediaId: String,
+        title: String,
+        artist: String?,
+        album: String?,
+        reloadSource: Boolean
+    ) {
+        val mediaController = controller
+        if (mediaController == null) {
+            resumeAfterEdit = false
+            return
+        }
+        val count = mediaController.mediaItemCount
+        val indexes = (0 until count).filter { mediaController.getMediaItemAt(it).mediaId == mediaId }
+        if (indexes.isNotEmpty()) {
+            fun updated(item: MediaItem): MediaItem = item.buildUpon()
+                .setMediaMetadata(
+                    item.mediaMetadata.buildUpon()
+                        .setTitle(title)
+                        .setArtist(artist)
+                        .setAlbumTitle(album)
+                        .build()
+                )
+                .build()
+            if (reloadSource) {
+                val currentIndex = mediaController.currentMediaItemIndex
+                val position = mediaController.currentPosition.coerceAtLeast(0L)
+                val items = (0 until count).map { index ->
+                    val item = mediaController.getMediaItemAt(index)
+                    if (index in indexes) updated(item) else item
+                }
+                mediaController.setMediaItems(items, currentIndex, position)
+                mediaController.prepare()
+            } else {
+                indexes.forEach { index ->
+                    mediaController.replaceMediaItem(index, updated(mediaController.getMediaItemAt(index)))
+                }
+            }
+        }
+        if (resumeAfterEdit) mediaController.play()
+        resumeAfterEdit = false
     }
 
     fun skipToNext() {
@@ -3129,6 +3288,7 @@ import com.elg.music.data.model.Playlist
 import com.elg.music.data.model.PlaylistSummary
 import com.elg.music.data.model.Song
 import com.elg.music.data.model.SortOrder
+import com.elg.music.data.repository.TagRepository
 import com.elg.music.data.repository.TitleCleaner
 import com.elg.music.data.repository.VaultRepository
 import com.elg.music.databinding.ActivityMainBinding
@@ -3261,10 +3421,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Retour depuis un autre écran : relit la bibliothèque si un morceau a quitté le coffre-fort. */
+    /** Retour depuis un autre écran : relit la bibliothèque si un morceau a quitté le coffre-fort ou si ses tags ont changé. */
     override fun onRestart() {
         super.onRestart()
-        if (VaultRepository.consumeLibraryDirty() && hasRequiredPermissions()) {
+        val vaultChanged = VaultRepository.consumeLibraryDirty()
+        val tagsChanged = TagRepository.consumeLibraryDirty()
+        if ((vaultChanged || tagsChanged) && hasRequiredPermissions()) {
             libraryViewModel.loadLibrary()
         }
     }
@@ -6966,10 +7128,13 @@ import androidx.room.Database
 import androidx.room.Delete
 import androidx.room.Entity
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -7016,16 +7181,81 @@ interface VaultDao {
 }
 
 /**
+ * Tags saisis dans l'éditeur (étape 6 de la v1.4), une ligne par morceau (identifiant MediaStore).
+ * Une chaîne vide signifie « champ absent ».
+ *
+ * @param fileWritten vrai si les tags ont été écrits dans le fichier (MP3) : la bibliothèque les lit alors
+ *   depuis le MediaStore. Sinon (FLAC, M4A, OGG…), cette ligne prime à l'affichage de la bibliothèque.
+ */
+@Entity(tableName = "tag_entries")
+data class TagEntryEntity(
+    @PrimaryKey val mediaId: Long,
+    val title: String,
+    val artist: String,
+    val album: String,
+    val albumArtist: String,
+    val genre: String,
+    val year: String,
+    val trackNumber: String,
+    val trackTotal: String,
+    val discNumber: String,
+    val composer: String,
+    val copyright: String,
+    val publisher: String,
+    val encoder: String,
+    val language: String,
+    val comment: String,
+    val lyrics: String,
+    val fileWritten: Boolean,
+    val updatedAtMs: Long
+)
+
+@Dao
+interface TagDao {
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entry: TagEntryEntity)
+
+    @Query("SELECT * FROM tag_entries WHERE mediaId = :mediaId")
+    suspend fun get(mediaId: Long): TagEntryEntity?
+
+    @Query("SELECT * FROM tag_entries")
+    suspend fun getAll(): List<TagEntryEntity>
+
+    /** Vide les tags enregistrés (réinitialisation usine). */
+    @Query("DELETE FROM tag_entries")
+    suspend fun clear()
+}
+
+/**
  * Base Room locale de l'application. Elle reste volontairement petite : les favoris, la liste noire,
  * les playlists et le tri restent dans leurs stockages actuels, pour ne rien casser du socle v1.3.
  */
-@Database(entities = [VaultEntryEntity::class], version = 1, exportSchema = false)
+@Database(entities = [VaultEntryEntity::class, TagEntryEntity::class], version = 2, exportSchema = false)
 abstract class ElgDatabase : RoomDatabase() {
 
     abstract fun vaultDao(): VaultDao
 
+    abstract fun tagDao(): TagDao
+
     companion object {
         private const val DATABASE_NAME = "elg_music.db"
+
+        private val TAG_TEXT_COLUMNS = listOf(
+            "title", "artist", "album", "albumArtist", "genre", "year", "trackNumber", "trackTotal",
+            "discNumber", "composer", "copyright", "publisher", "encoder", "language", "comment", "lyrics"
+        )
+
+        /** Version 1 -> 2 : ajoute la table des tags, sans toucher au coffre-fort existant. */
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val textColumns = TAG_TEXT_COLUMNS.joinToString(", ") { "`$it` TEXT NOT NULL" }
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `tag_entries` (`mediaId` INTEGER NOT NULL, $textColumns, " +
+                        "`fileWritten` INTEGER NOT NULL, `updatedAtMs` INTEGER NOT NULL, PRIMARY KEY(`mediaId`))"
+                )
+            }
+        }
 
         @Volatile
         private var instance: ElgDatabase? = null
@@ -7036,7 +7266,9 @@ abstract class ElgDatabase : RoomDatabase() {
                     context.applicationContext,
                     ElgDatabase::class.java,
                     DATABASE_NAME
-                ).build().also { instance = it }
+                )
+                    .addMigrations(MIGRATION_1_2)
+                    .build().also { instance = it }
             }
     }
 }
@@ -7060,6 +7292,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.elg.music.R
 import com.elg.music.data.model.Song
+import com.elg.music.ui.tags.TagEditorActivity
 import com.elg.music.ui.vault.VaultActions
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
@@ -7102,6 +7335,10 @@ class SongActions(
             share(song)
             true
         }
+        R.id.action_edit_tags -> {
+            activity.startActivity(TagEditorActivity.newIntent(activity, song.id))
+            true
+        }
         R.id.action_vault_song -> {
             vaultActions.hide(song)
             true
@@ -7129,6 +7366,7 @@ class SongActions(
         popup.menuInflater.inflate(R.menu.menu_player_options, popup.menu)
         val isLibrarySong = song != null
         popup.menu.findItem(R.id.action_share_song).isVisible = isLibrarySong
+        popup.menu.findItem(R.id.action_edit_tags).isVisible = isLibrarySong
         popup.menu.findItem(R.id.action_vault_song).isVisible = isLibrarySong
         popup.menu.findItem(R.id.action_delete_song).isVisible = isLibrarySong
         popup.setOnMenuItemClickListener { item ->
@@ -7230,6 +7468,10 @@ cat << 'EOF' > app/src/main/res/menu/menu_player_options.xml
     <item
         android:id="@+id/action_ab_loop"
         android:title="@string/menu_ab_loop" />
+
+    <item
+        android:id="@+id/action_edit_tags"
+        android:title="@string/song_menu_edit_tags" />
 
     <item
         android:id="@+id/action_share_song"
@@ -10322,6 +10564,1694 @@ y9JwxcA+yK3w1eVcdaXXfDs/93wQYTBNMDEwDQYJYIZIAWUDBAIBBQAEIM0vr/LzqBMMYVJ11T7K
 +B9JIHaZnUQGhyZDcFGbsNCxBBQ0JBpndO4lwG0E/ortI4RgX2H0bAICJxA=
 EOF
 
+echo "  -> app/src/main/java/com/elg/music/data/model/TagData.kt"
+mkdir -p app/src/main/java/com/elg/music/data/model
+cat << 'EOF' > app/src/main/java/com/elg/music/data/model/TagData.kt
+package com.elg.music.data.model
+
+import android.net.Uri
+
+/**
+ * Métadonnées modifiables d'un morceau (éditeur de tags, étape 6 de la v1.4).
+ * Une chaîne vide signifie « champ absent ».
+ */
+data class TagData(
+    val title: String = "",
+    val artist: String = "",
+    val album: String = "",
+    val albumArtist: String = "",
+    val genre: String = "",
+    val year: String = "",
+    val trackNumber: String = "",
+    val trackTotal: String = "",
+    val discNumber: String = "",
+    val composer: String = "",
+    val copyright: String = "",
+    val publisher: String = "",
+    val encoder: String = "",
+    val language: String = "",
+    val comment: String = "",
+    val lyrics: String = ""
+)
+
+/** Fichier audio tel que décrit par le MediaStore (source de l'éditeur de tags). */
+data class AudioFileInfo(
+    val id: Long,
+    val uri: Uri,
+    val displayName: String,
+    val mimeType: String?,
+    val sizeBytes: Long,
+    val relativePath: String,
+    val dataPath: String?,
+    val mediaStoreTitle: String?,
+    val durationMs: Long
+) {
+    /** Chemin complet (ex. /storage/emulated/0/Music/Titre.mp3). */
+    val fullPath: String
+        get() = dataPath?.takeIf { it.isNotBlank() }
+            ?: ("/storage/emulated/0/" + relativePath + displayName)
+}
+
+/** Inspecteur technique : format, débit (kbps), fréquence d'échantillonnage (Hz), taille, chemin. */
+data class TechInfo(
+    val format: String,
+    val bitrateKbps: Int?,
+    val sampleRateHz: Int?,
+    val sizeBytes: Long,
+    val path: String
+)
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/data/repository/Id3TagCodec.kt"
+mkdir -p app/src/main/java/com/elg/music/data/repository
+cat << 'EOF' > app/src/main/java/com/elg/music/data/repository/Id3TagCodec.kt
+package com.elg.music.data.repository
+
+import com.elg.music.data.model.TagData
+import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.nio.charset.Charset
+
+/**
+ * Lecture et écriture des tags ID3v2 des fichiers MP3, sans bibliothèque externe.
+ *
+ * L'écriture produit toujours un tag ID3v2.4 (textes en UTF-8). Les images (APIC), TXXX, PRIV et
+ * autres images du fichier d'origine sont conservées telles quelles, sauf les champs gérés par
+ * l'éditeur. Les images dont le cadre est compressé ou chiffré sont abandonnées (elles ne peuvent
+ * pas être recopiées sans les comprendre). Les tags ID3v2.2 ne sont pas conservés.
+ */
+object Id3TagCodec {
+
+    class Frame(val id: String, val data: ByteArray)
+
+    class ParsedTag(val frames: List<Frame>)
+
+    private const val HEADER_SIZE = 10
+    private const val FRAME_HEADER_SIZE = 10
+    private const val MAX_TAG_BYTES = 32 * 1024 * 1024
+
+    private val LATIN1: Charset = Charsets.ISO_8859_1
+    private val UTF8: Charset = Charsets.UTF_8
+
+    /** Cadres obsolètes en ID3v2.4 : retirés à l'écriture (remplacés par TDRC, etc.). */
+    private val OBSOLETE_FRAMES = setOf("TYER", "TDAT", "TIME", "TRDA", "TORY", "TSIZ", "IPLS", "RVAD", "EQUA")
+
+    /** Cadres écrits par l'éditeur : l'ancienne valeur est toujours remplacée. */
+    private val MANAGED_TEXT_FRAMES = setOf(
+        "TIT2", "TPE1", "TALB", "TPE2", "TCON", "TDRC", "TRCK", "TPOS",
+        "TCOM", "TCOP", "TPUB", "TENC", "TLAN"
+    )
+
+    private val ID3V1_GENRES = listOf(
+        "Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop", "Jazz", "Metal",
+        "New Age", "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae", "Rock", "Techno", "Industrial",
+        "Alternative", "Ska", "Death Metal", "Pranks", "Soundtrack", "Euro-Techno", "Ambient", "Trip-Hop",
+        "Vocal", "Jazz+Funk", "Fusion", "Trance", "Classical", "Instrumental", "Acid", "House", "Game",
+        "Sound Clip", "Gospel", "Noise", "Alt. Rock", "Bass", "Soul", "Punk", "Space", "Meditative",
+        "Instrumental Pop", "Instrumental Rock", "Ethnic", "Gothic", "Darkwave", "Techno-Industrial",
+        "Electronic", "Pop-Folk", "Eurodance", "Dream", "Southern Rock", "Comedy", "Cult", "Gangsta",
+        "Top 40", "Christian Rap", "Pop/Funk", "Jungle", "Native American", "Cabaret", "New Wave",
+        "Psychedelic", "Rave", "Showtunes", "Trailer", "Lo-Fi", "Tribal", "Acid Punk", "Acid Jazz",
+        "Polka", "Retro", "Musical", "Rock & Roll", "Hard Rock"
+    )
+
+    // ===================== Lecture =====================
+
+    /**
+     * Lit le tag ID3v2 placé au début du flux et le consomme : à la sortie, le flux est positionné
+     * sur les données audio. Renvoie null (flux inchangé) s'il n'y a pas de tag.
+     */
+    fun readTag(input: BufferedInputStream): ParsedTag? {
+        input.mark(HEADER_SIZE)
+        val header = ByteArray(HEADER_SIZE)
+        val read = readFully(input, header)
+        val isTag = read == HEADER_SIZE &&
+            header[0] == 'I'.code.toByte() && header[1] == 'D'.code.toByte() && header[2] == '3'.code.toByte()
+        val major = header[3].toInt() and 0xFF
+        val sizeBytesValid = (6..9).all { (header[it].toInt() and 0x80) == 0 }
+        if (!isTag || major !in 2..4 || !sizeBytesValid) {
+            input.reset()
+            return null
+        }
+        val flags = header[5].toInt() and 0xFF
+        val size = synchsafe(header, 6)
+        if (size < 0 || size > MAX_TAG_BYTES) {
+            input.reset()
+            return null
+        }
+        val body = ByteArray(size)
+        val got = readFully(input, body)
+        if (major == 4 && (flags and 0x10) != 0) {
+            readFully(input, ByteArray(HEADER_SIZE)) // pied de tag « 3DI »
+        }
+        return ParsedTag(parseFrames(major, flags, body.copyOf(got)))
+    }
+
+    private fun parseFrames(major: Int, flags: Int, raw: ByteArray): List<Frame> {
+        if (major < 3) return emptyList()
+        var body = raw
+        if (major == 3 && (flags and 0x80) != 0) body = undoUnsync(body)
+        var pos = 0
+        if ((flags and 0x40) != 0) {
+            if (body.size < 4) return emptyList()
+            val extended = if (major == 4) synchsafe(body, 0) else bigEndian(body, 0) + 4
+            if (extended < 0 || extended > body.size) return emptyList()
+            pos = extended
+        }
+        val perFrameUnsync = major == 4 && (flags and 0x80) != 0
+        val frames = ArrayList<Frame>()
+        while (pos + FRAME_HEADER_SIZE <= body.size) {
+            if (body[pos] == 0.toByte()) break
+            val id = String(body, pos, 4, LATIN1)
+            if (!id.all { it in 'A'..'Z' || it in '0'..'9' }) break
+            val size = if (major == 4) synchsafe(body, pos + 4) else bigEndian(body, pos + 4)
+            val formatFlags = body[pos + 9].toInt() and 0xFF
+            pos += FRAME_HEADER_SIZE
+            if (size < 0 || pos + size > body.size) break
+            var data = body.copyOfRange(pos, pos + size)
+            pos += size
+            val unusable = if (major == 4) (formatFlags and 0x4F) != 0 else (formatFlags and 0xE0) != 0
+            if (unusable || data.isEmpty()) continue
+            if (perFrameUnsync) data = undoUnsync(data)
+            frames.add(Frame(id, data))
+        }
+        return frames
+    }
+
+    /** Extrait les champs de l'éditeur ; les champs absents restent vides. */
+    fun extract(frames: List<Frame>): TagData {
+        fun text(id: String): String =
+            frames.firstOrNull { it.id == id }?.let { textOf(it.data) }.orEmpty()
+
+        val (trackNumber, trackTotal) = splitPair(text("TRCK"))
+        val disc = splitPair(text("TPOS")).first
+        val dateYear = Regex("^\\d{4}").find(text("TDRC"))?.value
+            ?: Regex("^\\d{4}").find(text("TYER"))?.value
+            ?: ""
+        val commentIndex = pickDescribedIndex(frames, "COMM")
+        val lyricsIndex = pickDescribedIndex(frames, "USLT")
+        return TagData(
+            title = text("TIT2"),
+            artist = text("TPE1"),
+            album = text("TALB"),
+            albumArtist = text("TPE2"),
+            genre = genreName(text("TCON")),
+            year = dateYear,
+            trackNumber = trackNumber,
+            trackTotal = trackTotal,
+            discNumber = disc,
+            composer = text("TCOM"),
+            copyright = text("TCOP"),
+            publisher = text("TPUB"),
+            encoder = text("TENC"),
+            language = text("TLAN"),
+            comment = if (commentIndex >= 0) parseDescribed(frames[commentIndex].data)?.text.orEmpty() else "",
+            lyrics = if (lyricsIndex >= 0) parseDescribed(frames[lyricsIndex].data)?.text.orEmpty() else ""
+        )
+    }
+
+    /** Image intégrée : la pochette de face (type 3) si elle existe, sinon la première image. */
+    fun extractCover(frames: List<Frame>): ByteArray? {
+        var fallback: ByteArray? = null
+        for (frame in frames) {
+            if (frame.id != "APIC") continue
+            val data = frame.data
+            if (data.size < 4) continue
+            val encoding = data[0].toInt() and 0xFF
+            var index = 1
+            while (index < data.size && data[index] != 0.toByte()) index++
+            index++ // fin du type MIME
+            if (index >= data.size) continue
+            val pictureType = data[index].toInt() and 0xFF
+            index++
+            val wide = encoding == 1 || encoding == 2
+            if (wide) {
+                while (index + 1 < data.size && !(data[index] == 0.toByte() && data[index + 1] == 0.toByte())) index += 2
+                index += 2
+            } else {
+                while (index < data.size && data[index] != 0.toByte()) index++
+                index += 1
+            }
+            if (index >= data.size) continue
+            val image = data.copyOfRange(index, data.size)
+            if (pictureType == 3) return image
+            if (fallback == null) fallback = image
+        }
+        return fallback
+    }
+
+    // ===================== Écriture =====================
+
+    /**
+     * Construit le tag ID3v2.4 complet : champs de l'éditeur + cadres conservés du tag d'origine.
+     * Si [coverJpeg] est fourni, il remplace toutes les images ; sinon les images existantes restent.
+     */
+    fun buildTag(existing: List<Frame>, tags: TagData, coverJpeg: ByteArray?): ByteArray {
+        val commentIndex = pickDescribedIndex(existing, "COMM")
+        val lyricsIndex = pickDescribedIndex(existing, "USLT")
+        val oldDate = existing.firstOrNull { it.id == "TDRC" }?.let { textOf(it.data) }.orEmpty()
+
+        val preserved = existing.filterIndexed { index, frame ->
+            frame.id !in MANAGED_TEXT_FRAMES &&
+                frame.id !in OBSOLETE_FRAMES &&
+                !(frame.id == "COMM" && index == commentIndex) &&
+                !(frame.id == "USLT" && index == lyricsIndex) &&
+                !(coverJpeg != null && frame.id == "APIC")
+        }
+
+        val out = ByteArrayOutputStream()
+        fun textFrame(id: String, value: String) {
+            if (value.isNotBlank()) writeFrame(out, id, byteArrayOf(3) + value.toByteArray(UTF8))
+        }
+
+        textFrame("TIT2", tags.title)
+        textFrame("TPE1", tags.artist)
+        textFrame("TALB", tags.album)
+        textFrame("TPE2", tags.albumArtist)
+        textFrame("TCON", tags.genre)
+        // Date complète d'origine conservée tant que l'année saisie n'a pas changé.
+        val date = if (tags.year.isNotBlank() && oldDate.length >= 4 && oldDate.startsWith(tags.year)) oldDate else tags.year
+        textFrame("TDRC", date)
+        textFrame("TRCK", pair(tags.trackNumber, tags.trackTotal))
+        textFrame("TPOS", tags.discNumber)
+        textFrame("TCOM", tags.composer)
+        textFrame("TCOP", tags.copyright)
+        textFrame("TPUB", tags.publisher)
+        textFrame("TENC", tags.encoder)
+        textFrame("TLAN", tags.language)
+
+        val lang = languageCode(tags.language)
+        if (tags.comment.isNotBlank()) writeFrame(out, "COMM", describedFrame(lang, tags.comment))
+        if (tags.lyrics.isNotBlank()) writeFrame(out, "USLT", describedFrame(lang, tags.lyrics))
+        if (coverJpeg != null) {
+            val apic = byteArrayOf(0) + "image/jpeg".toByteArray(LATIN1) + byteArrayOf(0, 3, 0) + coverJpeg
+            writeFrame(out, "APIC", apic)
+        }
+        for (frame in preserved) writeFrame(out, frame.id, frame.data)
+
+        val body = out.toByteArray()
+        val header = byteArrayOf(
+            'I'.code.toByte(), 'D'.code.toByte(), '3'.code.toByte(), 4, 0, 0
+        ) + synchsafeBytes(body.size)
+        return header + body
+    }
+
+    private fun writeFrame(out: ByteArrayOutputStream, id: String, data: ByteArray) {
+        if (data.size > 0x0FFFFFFF) return
+        out.write(id.toByteArray(LATIN1))
+        out.write(synchsafeBytes(data.size))
+        out.write(0)
+        out.write(0)
+        out.write(data)
+    }
+
+    private fun describedFrame(language: String, text: String): ByteArray =
+        byteArrayOf(3) + language.toByteArray(LATIN1) + byteArrayOf(0) + text.toByteArray(UTF8)
+
+    /** Code de langue ISO 639-2 sur 3 lettres ; « und » (indéterminée) si la saisie n'en est pas un. */
+    private fun languageCode(value: String): String {
+        val code = value.trim().lowercase()
+        return if (code.length == 3 && code.all { it in 'a'..'z' }) code else "und"
+    }
+
+    private fun pair(number: String, total: String): String = when {
+        number.isBlank() -> ""
+        total.isBlank() -> number
+        else -> "$number/$total"
+    }
+
+    fun splitPair(value: String): Pair<String, String> {
+        val parts = value.split('/')
+        return parts[0].trim() to parts.getOrElse(1) { "" }.trim()
+    }
+
+    // ===================== Décodage de textes =====================
+
+    private class Described(val descriptor: String, val text: String)
+
+    private fun textOf(data: ByteArray): String {
+        if (data.size < 2) return ""
+        val encoding = data[0].toInt() and 0xFF
+        return cleanValues(decode(encoding, data, 1, data.size - 1))
+    }
+
+    private fun decode(encoding: Int, bytes: ByteArray, offset: Int, length: Int): String {
+        if (length <= 0 || offset < 0 || offset + length > bytes.size) return ""
+        val charset = when (encoding) {
+            0 -> LATIN1
+            1 -> Charsets.UTF_16
+            2 -> Charsets.UTF_16BE
+            else -> UTF8
+        }
+        return String(bytes, offset, length, charset).removePrefix("\uFEFF")
+    }
+
+    /** Valeurs multiples séparées par un octet nul : réunies avec « ; ». */
+    private fun cleanValues(raw: String): String =
+        raw.split('\u0000').map { it.trim() }.filter { it.isNotEmpty() }.joinToString("; ")
+
+    private fun parseDescribed(data: ByteArray): Described? {
+        if (data.size < 5) return null
+        val encoding = data[0].toInt() and 0xFF
+        val start = 4
+        val wide = encoding == 1 || encoding == 2
+        var end = start
+        if (wide) {
+            while (end + 1 < data.size && !(data[end] == 0.toByte() && data[end + 1] == 0.toByte())) end += 2
+        } else {
+            while (end < data.size && data[end] != 0.toByte()) end++
+        }
+        val descriptor = decode(encoding, data, start, end - start)
+        val textStart = end + if (wide) 2 else 1
+        val text = if (textStart >= data.size) "" else decode(encoding, data, textStart, data.size - textStart)
+        return Described(descriptor.trim(), text.trimEnd('\u0000'))
+    }
+
+    /** Cadre COMM / USLT à modifier : celui sans descripteur, sinon le premier qui n'est pas de type « iTun… ». */
+    private fun pickDescribedIndex(frames: List<Frame>, id: String): Int {
+        var fallback = -1
+        for ((index, frame) in frames.withIndex()) {
+            if (frame.id != id) continue
+            val parsed = parseDescribed(frame.data) ?: continue
+            if (parsed.descriptor.isEmpty()) return index
+            if (fallback == -1 && !parsed.descriptor.startsWith("iTun", ignoreCase = true)) fallback = index
+        }
+        return fallback
+    }
+
+    /** « (13) », « (13)Pop » ou « 13 » deviennent le nom du genre ID3v1 ; un texte libre reste tel quel. */
+    private fun genreName(raw: String): String {
+        val value = raw.trim()
+        Regex("^\\((\\d{1,3})\\)(.*)$").find(value)?.let { match ->
+            val refinement = match.groupValues[2].trim()
+            if (refinement.isNotEmpty()) return refinement
+            return ID3V1_GENRES.getOrElse(match.groupValues[1].toInt()) { value }
+        }
+        if (value.isNotEmpty() && value.all { it in '0'..'9' }) {
+            return ID3V1_GENRES.getOrElse(value.toInt()) { value }
+        }
+        return value
+    }
+
+    // ===================== Octets =====================
+
+    private fun readFully(input: InputStream, buffer: ByteArray): Int {
+        var total = 0
+        while (total < buffer.size) {
+            val count = input.read(buffer, total, buffer.size - total)
+            if (count < 0) break
+            total += count
+        }
+        return total
+    }
+
+    private fun synchsafe(bytes: ByteArray, offset: Int): Int =
+        ((bytes[offset].toInt() and 0x7F) shl 21) or
+            ((bytes[offset + 1].toInt() and 0x7F) shl 14) or
+            ((bytes[offset + 2].toInt() and 0x7F) shl 7) or
+            (bytes[offset + 3].toInt() and 0x7F)
+
+    private fun bigEndian(bytes: ByteArray, offset: Int): Int =
+        ((bytes[offset].toInt() and 0xFF) shl 24) or
+            ((bytes[offset + 1].toInt() and 0xFF) shl 16) or
+            ((bytes[offset + 2].toInt() and 0xFF) shl 8) or
+            (bytes[offset + 3].toInt() and 0xFF)
+
+    private fun synchsafeBytes(value: Int): ByteArray = byteArrayOf(
+        ((value shr 21) and 0x7F).toByte(),
+        ((value shr 14) and 0x7F).toByte(),
+        ((value shr 7) and 0x7F).toByte(),
+        (value and 0x7F).toByte()
+    )
+
+    /** Retire l'octet 0x00 inséré après chaque 0xFF par la désynchronisation. */
+    private fun undoUnsync(data: ByteArray): ByteArray {
+        val out = ByteArrayOutputStream(data.size)
+        var index = 0
+        while (index < data.size) {
+            val value = data[index]
+            out.write(value.toInt())
+            if (value == 0xFF.toByte() && index + 1 < data.size && data[index + 1] == 0.toByte()) index++
+            index++
+        }
+        return out.toByteArray()
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/data/repository/FilenameTagParser.kt"
+mkdir -p app/src/main/java/com/elg/music/data/repository
+cat << 'EOF' > app/src/main/java/com/elg/music/data/repository/FilenameTagParser.kt
+package com.elg.music.data.repository
+
+/**
+ * Déduit titre, artiste et numéro de piste d'un nom de fichier
+ * (« 01 - Artiste - Titre.mp3 », « Artiste - Titre.mp3 », « 03. Titre.mp3 »).
+ */
+object FilenameTagParser {
+
+    data class Result(val title: String?, val artist: String?, val trackNumber: String?) {
+        val isEmpty: Boolean
+            get() = title == null && artist == null && trackNumber == null
+    }
+
+    private val EXTENSION = Regex("\\.[A-Za-z0-9]{2,5}$")
+    private val GLUED_MP3 = Regex("[-_]mp3$", RegexOption.IGNORE_CASE)
+    private val TRACK_PREFIX = Regex("^(\\d{1,3})\\s*[-._)]\\s*(.+)$")
+    private val SEPARATOR = Regex("\\s+[-\u2013\u2014]\\s+")
+    private val SPACES = Regex("\\s{2,}")
+
+    fun parse(fileName: String): Result {
+        var text = EXTENSION.replace(fileName.trim(), "")
+        text = GLUED_MP3.replace(text, "")
+        text = SPACES.replace(text.replace('_', ' '), " ").trim()
+        if (text.isEmpty()) return Result(null, null, null)
+
+        var track: String? = null
+        val prefix = TRACK_PREFIX.find(text)
+        if (prefix != null) {
+            track = prefix.groupValues[1].trimStart('0').ifEmpty { "0" }
+            text = prefix.groupValues[2].trim()
+        }
+
+        val parts = text.split(SEPARATOR).map { it.trim() }.filter { it.isNotEmpty() }
+        return when {
+            parts.size >= 2 ->
+                Result(
+                    title = parts.drop(1).joinToString(" - "),
+                    artist = parts[0],
+                    trackNumber = track
+                )
+            parts.size == 1 -> Result(title = parts[0], artist = null, trackNumber = track)
+            else -> Result(null, null, track)
+        }
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/data/repository/TagRepository.kt"
+mkdir -p app/src/main/java/com/elg/music/data/repository
+cat << 'EOF' > app/src/main/java/com/elg/music/data/repository/TagRepository.kt
+package com.elg.music.data.repository
+
+import android.content.ContentUris
+import android.content.ContentValues
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
+import android.media.MediaScannerConnection
+import android.net.Uri
+import android.provider.MediaStore
+import android.util.Size
+import com.elg.music.data.local.ElgDatabase
+import com.elg.music.data.local.TagEntryEntity
+import com.elg.music.data.model.AudioFileInfo
+import com.elg.music.data.model.TagData
+import com.elg.music.data.model.TechInfo
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileNotFoundException
+import java.io.FileOutputStream
+import java.io.IOException
+import kotlin.math.max
+import kotlin.math.roundToInt
+
+/** Résultat d'un enregistrement de tags. */
+sealed interface SaveOutcome {
+    /** [fileRewritten] : vrai si les tags ont été écrits physiquement dans le fichier (MP3). */
+    data class Saved(val fileRewritten: Boolean) : SaveOutcome
+
+    /** Le système demande l'autorisation d'écriture (MediaStore.createWriteRequest). */
+    data object NeedsPermission : SaveOutcome
+
+    data class Failed(val message: String?) : SaveOutcome
+}
+
+/** Tout ce que l'éditeur affiche pour un fichier. */
+class TagBundle(
+    val tags: TagData,
+    val coverBytes: ByteArray?,
+    val tech: TechInfo,
+    val isMp3: Boolean
+)
+
+/** Pochette choisie dans la galerie : JPEG prêt à intégrer + aperçu. */
+class PreparedCover(val jpeg: ByteArray, val preview: Bitmap)
+
+/**
+ * Éditeur de tags (étape 6 de la v1.4) : lecture, écriture et persistance des métadonnées.
+ *
+ *  - MP3 : le tag ID3v2.4 est réécrit dans le fichier ([Id3TagCodec]) après autorisation du système
+ *    (`MediaStore.createWriteRequest`), puis le MediaStore est mis à jour.
+ *  - Autres formats (FLAC, M4A, OGG…) : Android ne permet pas d'écrire leurs tags ; les champs sont
+ *    mis à jour dans le MediaStore (titre, artiste, album, genre, année, piste, compositeur) et
+ *    conservés en entier dans la base Room, qui prime à l'affichage de la bibliothèque.
+ *  - Dans tous les cas, une ligne Room garde la dernière saisie.
+ */
+class TagRepository(context: Context) {
+
+    private val appContext = context.applicationContext
+    private val resolver = appContext.contentResolver
+    private val dao = ElgDatabase.get(appContext).tagDao()
+    private val titleCleaner = TitleCleaner(appContext)
+
+    // ===================== Lecture =====================
+
+    @Suppress("DEPRECATION")
+    suspend fun loadFileInfo(id: Long): AudioFileInfo? = withContext(Dispatchers.IO) {
+        val uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
+        val projection = arrayOf(
+            MediaStore.Audio.Media._ID,
+            MediaStore.Audio.Media.DISPLAY_NAME,
+            MediaStore.Audio.Media.MIME_TYPE,
+            MediaStore.Audio.Media.SIZE,
+            MediaStore.Audio.Media.RELATIVE_PATH,
+            MediaStore.Audio.Media.DATA,
+            MediaStore.Audio.Media.TITLE,
+            MediaStore.Audio.Media.DURATION
+        )
+        try {
+            resolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) {
+                    null
+                } else {
+                    AudioFileInfo(
+                        id = cursor.getLong(0),
+                        uri = uri,
+                        displayName = cursor.getString(1).orEmpty(),
+                        mimeType = cursor.getString(2),
+                        sizeBytes = cursor.getLong(3),
+                        relativePath = cursor.getString(4).orEmpty(),
+                        dataPath = cursor.getString(5),
+                        mediaStoreTitle = cursor.getString(6),
+                        durationMs = cursor.getLong(7)
+                    )
+                }
+            }
+        } catch (error: Exception) {
+            null
+        }
+    }
+
+    fun isMp3(info: AudioFileInfo): Boolean {
+        val mime = info.mimeType
+        return mime.equals("audio/mpeg", ignoreCase = true) ||
+            mime.equals("audio/mp3", ignoreCase = true) ||
+            info.displayName.endsWith(".mp3", ignoreCase = true)
+    }
+
+    suspend fun readTags(info: AudioFileInfo): TagBundle = withContext(Dispatchers.IO) {
+        val mp3 = isMp3(info)
+        var tags = TagData()
+        var bitrate: Int? = null
+        var sampleRate: Int? = null
+
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(appContext, info.uri)
+            fun meta(key: Int): String = retriever.extractMetadata(key)?.trim().orEmpty()
+            val track = Id3TagCodec.splitPair(meta(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER))
+            tags = TagData(
+                title = meta(MediaMetadataRetriever.METADATA_KEY_TITLE),
+                artist = meta(MediaMetadataRetriever.METADATA_KEY_ARTIST),
+                album = meta(MediaMetadataRetriever.METADATA_KEY_ALBUM),
+                albumArtist = meta(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST),
+                genre = meta(MediaMetadataRetriever.METADATA_KEY_GENRE),
+                year = Regex("^\\d{4}").find(meta(MediaMetadataRetriever.METADATA_KEY_YEAR))?.value.orEmpty(),
+                trackNumber = track.first,
+                trackTotal = track.second,
+                discNumber = Id3TagCodec.splitPair(meta(MediaMetadataRetriever.METADATA_KEY_DISC_NUMBER)).first,
+                composer = meta(MediaMetadataRetriever.METADATA_KEY_COMPOSER)
+            )
+            bitrate = meta(MediaMetadataRetriever.METADATA_KEY_BITRATE).toIntOrNull()?.div(1000)
+            sampleRate = meta(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE).toIntOrNull()
+        } catch (error: Exception) {
+            // Métadonnées illisibles : l'éditeur s'ouvre avec des champs vides.
+        } finally {
+            runCatching { retriever.release() }
+        }
+
+        var cover: ByteArray? = null
+        if (mp3) {
+            try {
+                resolver.openInputStream(info.uri)?.use { raw ->
+                    val parsed = Id3TagCodec.readTag(BufferedInputStream(raw, BUFFER_BYTES))
+                    if (parsed != null) {
+                        tags = tags.overlay(Id3TagCodec.extract(parsed.frames))
+                        cover = Id3TagCodec.extractCover(parsed.frames)
+                    }
+                }
+            } catch (error: Exception) {
+                // Tag illisible : on garde ce que le système a pu lire.
+            }
+        } else {
+            try {
+                dao.get(info.id)?.let { tags = it.toTagData() }
+            } catch (error: Exception) {
+                // Base indisponible : valeurs du fichier.
+            }
+        }
+
+        if (tags.title.isBlank()) {
+            tags = tags.copy(title = titleCleaner.clean(info.mediaStoreTitle ?: info.displayName))
+        }
+
+        val extension = info.displayName.substringAfterLast('.', "").uppercase()
+        val format = listOfNotNull(
+            extension.ifBlank { null },
+            info.mimeType?.let { "($it)" }
+        ).joinToString(" ").ifBlank { "?" }
+
+        TagBundle(
+            tags = tags,
+            coverBytes = cover,
+            tech = TechInfo(format, bitrate, sampleRate, info.sizeBytes, info.fullPath),
+            isMp3 = mp3
+        )
+    }
+
+    /** Pochette à afficher : image intégrée si présente, sinon vignette du système ; null si aucune. */
+    suspend fun loadCoverBitmap(info: AudioFileInfo, embedded: ByteArray?): Bitmap? =
+        withContext(Dispatchers.IO) {
+            if (embedded != null) {
+                val decoded = decodeSampled(embedded)
+                if (decoded != null) return@withContext decoded
+            }
+            try {
+                resolver.loadThumbnail(info.uri, Size(PREVIEW_PX, PREVIEW_PX), null)
+            } catch (noArtwork: Exception) {
+                null
+            }
+        }
+
+    /** Prépare l'image choisie dans la galerie : réduite à [COVER_MAX_PX] et recompressée en JPEG. */
+    suspend fun prepareCover(source: Uri): PreparedCover? = withContext(Dispatchers.IO) {
+        try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            resolver.openInputStream(source)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@withContext null
+            var sample = 1
+            while (bounds.outWidth / sample > COVER_MAX_PX * 2 || bounds.outHeight / sample > COVER_MAX_PX * 2) {
+                sample *= 2
+            }
+            val options = BitmapFactory.Options().apply { inSampleSize = sample }
+            val decoded = resolver.openInputStream(source)?.use { BitmapFactory.decodeStream(it, null, options) }
+                ?: return@withContext null
+            val longest = max(decoded.width, decoded.height)
+            val scaled = if (longest > COVER_MAX_PX) {
+                val ratio = COVER_MAX_PX.toFloat() / longest
+                Bitmap.createScaledBitmap(
+                    decoded,
+                    (decoded.width * ratio).roundToInt().coerceAtLeast(1),
+                    (decoded.height * ratio).roundToInt().coerceAtLeast(1),
+                    true
+                )
+            } else {
+                decoded
+            }
+            val out = ByteArrayOutputStream()
+            scaled.compress(Bitmap.CompressFormat.JPEG, 90, out)
+            PreparedCover(out.toByteArray(), scaled)
+        } catch (error: Exception) {
+            null
+        }
+    }
+
+    private fun decodeSampled(bytes: ByteArray): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / sample > PREVIEW_PX * 2 || bounds.outHeight / sample > PREVIEW_PX * 2) sample *= 2
+        val options = BitmapFactory.Options().apply { inSampleSize = sample }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    }
+
+    // ===================== Écriture =====================
+
+    /**
+     * Enregistre les tags. Non annulable : le fichier, le MediaStore et la base Room ne doivent jamais
+     * rester à moitié à jour. Renvoie [SaveOutcome.NeedsPermission] si le système doit d'abord
+     * accorder l'écriture (rien n'a alors été modifié).
+     */
+    suspend fun save(
+        info: AudioFileInfo,
+        tags: TagData,
+        coverJpeg: ByteArray?,
+        allowFileWrite: Boolean
+    ): SaveOutcome = withContext(NonCancellable + Dispatchers.IO) {
+        val mp3 = isMp3(info)
+        var rewritten = false
+        try {
+            if (allowFileWrite) {
+                if (mp3) {
+                    rewriteMp3(info.uri, tags, coverJpeg)
+                    rewritten = true
+                    runCatching { updateMediaStore(info, tags) }
+                    refreshScan(info)
+                } else {
+                    try {
+                        updateMediaStore(info, tags)
+                    } catch (denied: SecurityException) {
+                        throw denied
+                    } catch (other: Exception) {
+                        // La base Room prend le relais à l'affichage.
+                    }
+                }
+            }
+        } catch (denied: SecurityException) {
+            return@withContext SaveOutcome.NeedsPermission
+        } catch (error: Exception) {
+            return@withContext SaveOutcome.Failed(error.message)
+        }
+
+        try {
+            dao.upsert(tags.toEntity(info.id, rewritten))
+        } catch (error: Exception) {
+            return@withContext SaveOutcome.Failed(error.message)
+        }
+        markLibraryDirty()
+        SaveOutcome.Saved(rewritten)
+    }
+
+    /**
+     * Réécrit le MP3 : nouveau tag + données audio d'origine, d'abord dans un fichier temporaire,
+     * puis recopié sur le fichier. L'ouverture en écriture échoue avant toute troncature si le
+     * système n'a pas accordé l'accès : le fichier d'origine reste alors intact.
+     */
+    private fun rewriteMp3(uri: Uri, tags: TagData, coverJpeg: ByteArray?) {
+        val temp = File(appContext.cacheDir, "tag_edit_${System.nanoTime()}.tmp")
+        try {
+            val input = resolver.openInputStream(uri) ?: throw IOException("Fichier illisible")
+            input.use { raw ->
+                val buffered = BufferedInputStream(raw, BUFFER_BYTES)
+                val old = Id3TagCodec.readTag(buffered)
+                val newTag = Id3TagCodec.buildTag(old?.frames.orEmpty(), tags, coverJpeg)
+                FileOutputStream(temp).use { out ->
+                    out.write(newTag)
+                    buffered.copyTo(out)
+                }
+                if (temp.length() - newTag.size <= 0L) throw IOException("Aucune donnée audio")
+            }
+            var attempt = 0
+            while (true) {
+                try {
+                    copyBack(uri, temp)
+                    break
+                } catch (denied: SecurityException) {
+                    throw denied
+                } catch (io: IOException) {
+                    attempt++
+                    if (attempt >= 2) throw io
+                }
+            }
+        } finally {
+            temp.delete()
+        }
+    }
+
+    private fun copyBack(uri: Uri, source: File) {
+        val output = try {
+            resolver.openOutputStream(uri, "wt")
+        } catch (notAllowed: FileNotFoundException) {
+            throw SecurityException(notAllowed.message)
+        } ?: throw IOException("Écriture impossible")
+        output.use { out -> source.inputStream().use { it.copyTo(out) } }
+    }
+
+    private fun updateMediaStore(info: AudioFileInfo, tags: TagData) {
+        val track = tags.trackNumber.toIntOrNull()
+        val disc = tags.discNumber.toIntOrNull() ?: 0
+        val values = ContentValues().apply {
+            put(MediaStore.Audio.Media.TITLE, tags.title)
+            put(MediaStore.Audio.Media.ARTIST, tags.artist.ifBlank { null })
+            put(MediaStore.Audio.Media.ALBUM, tags.album.ifBlank { null })
+            put(MediaStore.Audio.Media.COMPOSER, tags.composer.ifBlank { null })
+            put(MediaStore.Audio.Media.YEAR, tags.year.toIntOrNull())
+            put(MediaStore.Audio.Media.TRACK, if (track != null) disc * 1000 + track else null)
+        }
+        val extended = ContentValues(values).apply {
+            put(MediaStore.Audio.Media.ALBUM_ARTIST, tags.albumArtist.ifBlank { null })
+            put(MediaStore.Audio.Media.GENRE, tags.genre.ifBlank { null })
+        }
+        try {
+            resolver.update(info.uri, extended, null, null)
+        } catch (unknownColumn: IllegalArgumentException) {
+            resolver.update(info.uri, values, null, null)
+        }
+    }
+
+    private fun refreshScan(info: AudioFileInfo) {
+        val path = info.dataPath?.takeIf { it.isNotBlank() } ?: return
+        runCatching {
+            MediaScannerConnection.scanFile(
+                appContext,
+                arrayOf(path),
+                arrayOf(info.mimeType ?: "audio/mpeg"),
+                null
+            )
+        }
+    }
+
+    // ===================== Conversions =====================
+
+    private fun TagData.overlay(top: TagData): TagData = TagData(
+        title = top.title.ifBlank { title },
+        artist = top.artist.ifBlank { artist },
+        album = top.album.ifBlank { album },
+        albumArtist = top.albumArtist.ifBlank { albumArtist },
+        genre = top.genre.ifBlank { genre },
+        year = top.year.ifBlank { year },
+        trackNumber = top.trackNumber.ifBlank { trackNumber },
+        trackTotal = top.trackTotal.ifBlank { trackTotal },
+        discNumber = top.discNumber.ifBlank { discNumber },
+        composer = top.composer.ifBlank { composer },
+        copyright = top.copyright.ifBlank { copyright },
+        publisher = top.publisher.ifBlank { publisher },
+        encoder = top.encoder.ifBlank { encoder },
+        language = top.language.ifBlank { language },
+        comment = top.comment.ifBlank { comment },
+        lyrics = top.lyrics.ifBlank { lyrics }
+    )
+
+    private fun TagEntryEntity.toTagData(): TagData = TagData(
+        title = title, artist = artist, album = album, albumArtist = albumArtist, genre = genre,
+        year = year, trackNumber = trackNumber, trackTotal = trackTotal, discNumber = discNumber,
+        composer = composer, copyright = copyright, publisher = publisher, encoder = encoder,
+        language = language, comment = comment, lyrics = lyrics
+    )
+
+    private fun TagData.toEntity(mediaId: Long, fileWritten: Boolean): TagEntryEntity = TagEntryEntity(
+        mediaId = mediaId, title = title, artist = artist, album = album, albumArtist = albumArtist,
+        genre = genre, year = year, trackNumber = trackNumber, trackTotal = trackTotal,
+        discNumber = discNumber, composer = composer, copyright = copyright, publisher = publisher,
+        encoder = encoder, language = language, comment = comment, lyrics = lyrics,
+        fileWritten = fileWritten, updatedAtMs = System.currentTimeMillis()
+    )
+
+    companion object {
+        private const val BUFFER_BYTES = 64 * 1024
+        private const val COVER_MAX_PX = 800
+        private const val PREVIEW_PX = 600
+
+        @Volatile
+        private var libraryDirty = false
+
+        /** Signale à l'écran principal que la bibliothèque doit être relue (tags modifiés). */
+        fun markLibraryDirty() {
+            libraryDirty = true
+        }
+
+        /** Lit puis efface le signal « bibliothèque à relire ». */
+        fun consumeLibraryDirty(): Boolean {
+            val dirty = libraryDirty
+            libraryDirty = false
+            return dirty
+        }
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/ui/tags/TagEditorActivity.kt"
+mkdir -p app/src/main/java/com/elg/music/ui/tags
+cat << 'EOF' > app/src/main/java/com/elg/music/ui/tags/TagEditorActivity.kt
+package com.elg.music.ui.tags
+
+import android.content.Context
+import android.content.Intent
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.Bundle
+import android.provider.MediaStore
+import android.text.InputFilter
+import android.text.InputType
+import android.text.format.Formatter
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.widget.doOnTextChanged
+import androidx.lifecycle.lifecycleScope
+import com.elg.music.R
+import com.elg.music.data.model.AudioFileInfo
+import com.elg.music.data.model.TagData
+import com.elg.music.data.model.TechInfo
+import com.elg.music.data.repository.FilenameTagParser
+import com.elg.music.data.repository.SaveOutcome
+import com.elg.music.data.repository.TagRepository
+import com.elg.music.data.repository.TitleCleaner
+import com.elg.music.databinding.ActivityTagEditorBinding
+import com.elg.music.databinding.ItemTagFieldBinding
+import com.elg.music.playback.PlayerController
+import com.elg.music.ui.applySystemBarPadding
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.text.NumberFormat
+import java.util.Locale
+
+private const val TEXT_WORDS = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
+private const val TEXT_PLAIN = InputType.TYPE_CLASS_TEXT
+private const val TEXT_NUMBER = InputType.TYPE_CLASS_NUMBER
+private const val TEXT_MULTILINE =
+    InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+
+/** Champs du formulaire, dans l'ordre d'affichage. */
+private enum class TagField(@StringRes val labelRes: Int, val inputType: Int, val maxLength: Int) {
+    TITLE(R.string.tag_field_title, TEXT_WORDS, 200),
+    ARTIST(R.string.tag_field_artist, TEXT_WORDS, 200),
+    ALBUM(R.string.tag_field_album, TEXT_WORDS, 200),
+    ALBUM_ARTIST(R.string.tag_field_album_artist, TEXT_WORDS, 200),
+    GENRE(R.string.tag_field_genre, TEXT_WORDS, 100),
+    YEAR(R.string.tag_field_year, TEXT_NUMBER, 4),
+    DISC(R.string.tag_field_disc, TEXT_NUMBER, 4),
+    TRACK(R.string.tag_field_track, TEXT_NUMBER, 4),
+    TRACK_TOTAL(R.string.tag_field_track_total, TEXT_NUMBER, 4),
+    COMPOSER(R.string.tag_field_composer, TEXT_WORDS, 200),
+    COPYRIGHT(R.string.tag_field_copyright, TEXT_PLAIN, 200),
+    PUBLISHER(R.string.tag_field_publisher, TEXT_WORDS, 200),
+    ENCODER(R.string.tag_field_encoder, TEXT_PLAIN, 200),
+    LANGUAGE(R.string.tag_field_language, TEXT_PLAIN, 40),
+    COMMENT(R.string.tag_field_comment, TEXT_MULTILINE, 4000),
+    LYRICS(R.string.tag_field_lyrics, TEXT_MULTILINE, 30000);
+
+    val isNumeric: Boolean
+        get() = inputType == TEXT_NUMBER
+}
+
+private class FieldRow(val binding: ItemTagFieldBinding) {
+    var value: String
+        get() = binding.editTagField.text?.toString().orEmpty().trim()
+        set(newValue) {
+            binding.editTagField.setText(newValue)
+        }
+}
+
+/**
+ * Éditeur de tags « Studio Edition » (étape 6 de la v1.4).
+ *
+ * À l'ouverture, un avertissement légal doit être accepté ; « Annuler » ferme l'écran. L'édition
+ * couvre 16 champs, la pochette (depuis la galerie), un inspecteur technique et le remplissage
+ * depuis le nom de fichier. L'enregistrement passe par [TagRepository] : écriture dans le fichier
+ * MP3 après `MediaStore.createWriteRequest`, mise à jour du MediaStore et de la base Room, puis
+ * mise à jour du lecteur en cours ; l'écran principal relit la bibliothèque à son retour.
+ */
+class TagEditorActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityTagEditorBinding
+    private lateinit var repository: TagRepository
+    private val playerController: PlayerController by lazy { PlayerController(this) }
+
+    private val rows = LinkedHashMap<TagField, FieldRow>()
+    private var songId = INVALID_ID
+    private var fileInfo: AudioFileInfo? = null
+    private var isMp3 = false
+    private var loaded = false
+    private var warningAccepted = false
+    private var warningDialog: AlertDialog? = null
+    private var saving = false
+    private var writeRequested = false
+    private var newCoverJpeg: ByteArray? = null
+    private var savedForm: Bundle? = null
+
+    private val pickImage = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) onImagePicked(uri)
+    }
+
+    private val writeRequestLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        onWriteRequestResult(result.resultCode == RESULT_OK)
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityTagEditorBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        binding.root.applySystemBarPadding()
+
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        binding.toolbar.setNavigationContentDescription(R.string.settings_back_description)
+
+        songId = intent.getLongExtra(EXTRA_SONG_ID, INVALID_ID)
+        if (songId == INVALID_ID) {
+            finish()
+            return
+        }
+        repository = TagRepository(this)
+        warningAccepted = savedInstanceState?.getBoolean(KEY_ACCEPTED, false) ?: false
+        savedForm = savedInstanceState?.getBundle(KEY_FORM)
+        newCoverJpeg = savedInstanceState?.getByteArray(KEY_COVER)
+
+        buildFields()
+        setupActions()
+        if (warningAccepted) loadData() else showWarning()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        playerController.connect()
+    }
+
+    override fun onStop() {
+        playerController.disconnect()
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        warningDialog?.dismiss()
+        warningDialog = null
+        super.onDestroy()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_ACCEPTED, warningAccepted)
+        if (loaded) {
+            outState.putBundle(KEY_FORM, Bundle().apply {
+                rows.forEach { (field, row) -> putString(field.name, row.value) }
+            })
+        }
+        newCoverJpeg?.let { outState.putByteArray(KEY_COVER, it) }
+    }
+
+    override fun onSupportNavigateUp(): Boolean {
+        finish()
+        return true
+    }
+
+    // ===================== Avertissement légal =====================
+
+    private fun showWarning() {
+        warningDialog?.dismiss()
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.tag_warning_title)
+            .setMessage(R.string.tag_warning_message)
+            .setNegativeButton(R.string.tag_warning_cancel) { dialogInterface, _ -> dialogInterface.cancel() }
+            .setPositiveButton(R.string.tag_warning_accept) { _, _ ->
+                warningAccepted = true
+                loadData()
+            }
+            .setOnCancelListener { finish() }
+            .create()
+        dialog.setCanceledOnTouchOutside(false)
+        warningDialog = dialog
+        dialog.show()
+    }
+
+    // ===================== Construction du formulaire =====================
+
+    private fun buildFields() {
+        addRow(TagField.TITLE)
+        addRow(TagField.ARTIST)
+        addRow(TagField.ALBUM)
+        addRow(TagField.ALBUM_ARTIST)
+        addRow(TagField.GENRE)
+        addRow(TagField.YEAR, TagField.DISC)
+        addRow(TagField.TRACK, TagField.TRACK_TOTAL)
+        addRow(TagField.COMPOSER)
+        addRow(TagField.COPYRIGHT)
+        addRow(TagField.PUBLISHER)
+        addRow(TagField.ENCODER)
+        addRow(TagField.LANGUAGE)
+        addRow(TagField.COMMENT)
+        addRow(TagField.LYRICS)
+    }
+
+    private fun addRow(vararg fields: TagField) {
+        val container = binding.layoutTagFields
+        if (fields.size == 1) {
+            container.addView(createField(fields[0], container).binding.root)
+            return
+        }
+        val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        fields.forEachIndexed { index, field ->
+            val view = createField(field, line).binding.root
+            view.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                if (index > 0) marginStart = (12 * resources.displayMetrics.density).toInt()
+            }
+            line.addView(view)
+        }
+        container.addView(line)
+    }
+
+    private fun createField(field: TagField, parent: ViewGroup): FieldRow {
+        val itemBinding = ItemTagFieldBinding.inflate(layoutInflater, parent, false)
+        val row = FieldRow(itemBinding)
+        val edit = itemBinding.editTagField
+        itemBinding.inputLayoutTagField.hint = getString(field.labelRes)
+        edit.inputType = field.inputType
+        edit.filters = arrayOf(InputFilter.LengthFilter(field.maxLength))
+        // Les champs sont créés en code avec le même identifiant : leur état est géré par onSaveInstanceState.
+        edit.isSaveEnabled = false
+        if (field == TagField.COMMENT || field == TagField.LYRICS) {
+            edit.minLines = if (field == TagField.LYRICS) 6 else 3
+            edit.maxLines = 14
+            edit.gravity = Gravity.TOP or Gravity.START
+        } else {
+            edit.maxLines = 1
+        }
+        edit.doOnTextChanged { _, _, _, _ -> itemBinding.inputLayoutTagField.error = null }
+        rows[field] = row
+        return row
+    }
+
+    private fun setupActions() {
+        binding.buttonChangeCover.setOnClickListener {
+            pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        }
+        binding.buttonAutoFill.setOnClickListener { autoFillFromFilename() }
+        binding.buttonTagSave.setOnClickListener { startSave() }
+        binding.buttonTagCancel.setOnClickListener { finish() }
+    }
+
+    // ===================== Chargement =====================
+
+    private fun loadData() {
+        binding.progressTagLoading.visibility = View.VISIBLE
+        lifecycleScope.launch {
+            val info = repository.loadFileInfo(songId)
+            if (info == null) {
+                Toast.makeText(this@TagEditorActivity, R.string.tag_load_error, Toast.LENGTH_LONG).show()
+                finish()
+                return@launch
+            }
+            fileInfo = info
+            isMp3 = repository.isMp3(info)
+            val bundle = repository.readTags(info)
+
+            fillForm(bundle.tags)
+            savedForm?.let { form ->
+                rows.forEach { (field, row) -> form.getString(field.name)?.let { row.value = it } }
+                savedForm = null
+            }
+            renderTech(bundle.tech)
+            binding.buttonChangeCover.isEnabled = isMp3
+            binding.textTagCoverNote.visibility = if (isMp3) View.GONE else View.VISIBLE
+            binding.textTagFormatNote.visibility = if (isMp3) View.GONE else View.VISIBLE
+
+            val pending = newCoverJpeg
+            if (pending != null) {
+                BitmapFactory.decodeByteArray(pending, 0, pending.size)?.let { binding.imageTagCover.setImageBitmap(it) }
+            } else {
+                repository.loadCoverBitmap(info, bundle.coverBytes)?.let { binding.imageTagCover.setImageBitmap(it) }
+            }
+
+            loaded = true
+            binding.progressTagLoading.visibility = View.GONE
+            binding.scrollTagEditor.visibility = View.VISIBLE
+            binding.layoutTagActions.visibility = View.VISIBLE
+        }
+    }
+
+    private fun fillForm(tags: TagData) {
+        set(TagField.TITLE, tags.title)
+        set(TagField.ARTIST, tags.artist)
+        set(TagField.ALBUM, tags.album)
+        set(TagField.ALBUM_ARTIST, tags.albumArtist)
+        set(TagField.GENRE, tags.genre)
+        set(TagField.YEAR, tags.year)
+        set(TagField.TRACK, tags.trackNumber)
+        set(TagField.TRACK_TOTAL, tags.trackTotal)
+        set(TagField.DISC, tags.discNumber)
+        set(TagField.COMPOSER, tags.composer)
+        set(TagField.COPYRIGHT, tags.copyright)
+        set(TagField.PUBLISHER, tags.publisher)
+        set(TagField.ENCODER, tags.encoder)
+        set(TagField.LANGUAGE, tags.language)
+        set(TagField.COMMENT, tags.comment)
+        set(TagField.LYRICS, tags.lyrics)
+    }
+
+    private fun set(field: TagField, value: String) {
+        rows[field]?.value = value
+    }
+
+    private fun value(field: TagField): String = rows[field]?.value.orEmpty()
+
+    private fun renderTech(tech: TechInfo) {
+        val unknown = getString(R.string.tag_tech_unknown)
+        binding.textTechFormat.text = getString(R.string.tag_tech_format, tech.format)
+        binding.textTechBitrate.text =
+            getString(R.string.tag_tech_bitrate, tech.bitrateKbps?.let { "$it kbps" } ?: unknown)
+        binding.textTechSampleRate.text = getString(
+            R.string.tag_tech_sample_rate,
+            tech.sampleRateHz?.let { String.format(Locale.getDefault(), "%.1f kHz", it / 1000.0) } ?: unknown
+        )
+        binding.textTechSize.text = getString(
+            R.string.tag_tech_size,
+            Formatter.formatFileSize(this, tech.sizeBytes),
+            NumberFormat.getIntegerInstance().format(tech.sizeBytes)
+        )
+        binding.textTechPath.text = getString(R.string.tag_tech_path, tech.path)
+    }
+
+    // ===================== Actions =====================
+
+    private fun autoFillFromFilename() {
+        val info = fileInfo ?: return
+        val parsed = FilenameTagParser.parse(info.displayName)
+        if (parsed.isEmpty) {
+            Toast.makeText(this, R.string.tag_autofill_nothing, Toast.LENGTH_SHORT).show()
+            return
+        }
+        parsed.title?.let { set(TagField.TITLE, it) }
+        parsed.artist?.let { set(TagField.ARTIST, it) }
+        parsed.trackNumber?.let { set(TagField.TRACK, it) }
+        Toast.makeText(this, R.string.tag_autofill_done, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun onImagePicked(uri: Uri) {
+        lifecycleScope.launch {
+            val prepared = repository.prepareCover(uri)
+            if (prepared == null) {
+                Toast.makeText(this@TagEditorActivity, R.string.tag_cover_error, Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            newCoverJpeg = prepared.jpeg
+            binding.imageTagCover.setImageBitmap(prepared.preview)
+            Toast.makeText(this@TagEditorActivity, R.string.tag_cover_updated, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** Valide le formulaire ; renvoie null (en signalant l'erreur sous le champ) si une saisie est invalide. */
+    private fun collectTags(): TagData? {
+        var firstInvalid: TagField? = null
+        fun invalid(field: TagField, messageRes: Int) {
+            rows[field]?.binding?.inputLayoutTagField?.error = getString(messageRes)
+            if (firstInvalid == null) firstInvalid = field
+        }
+        if (value(TagField.TITLE).isEmpty()) invalid(TagField.TITLE, R.string.tag_error_title_empty)
+        for (field in TagField.entries) {
+            if (!field.isNumeric) continue
+            val text = value(field)
+            if (text.isNotEmpty() && (text.length > 4 || !text.all { it in '0'..'9' })) {
+                invalid(field, R.string.tag_error_number)
+            }
+        }
+        firstInvalid?.let { field ->
+            rows[field]?.binding?.editTagField?.requestFocus()
+            return null
+        }
+        return TagData(
+            title = value(TagField.TITLE),
+            artist = value(TagField.ARTIST),
+            album = value(TagField.ALBUM),
+            albumArtist = value(TagField.ALBUM_ARTIST),
+            genre = value(TagField.GENRE),
+            year = value(TagField.YEAR),
+            trackNumber = value(TagField.TRACK),
+            trackTotal = value(TagField.TRACK_TOTAL),
+            discNumber = value(TagField.DISC),
+            composer = value(TagField.COMPOSER),
+            copyright = value(TagField.COPYRIGHT),
+            publisher = value(TagField.PUBLISHER),
+            encoder = value(TagField.ENCODER),
+            language = value(TagField.LANGUAGE),
+            comment = value(TagField.COMMENT),
+            lyrics = value(TagField.LYRICS)
+        )
+    }
+
+    // ===================== Enregistrement =====================
+
+    private fun startSave() {
+        if (saving || !loaded) return
+        if (collectTags() == null) return
+        saving = true
+        writeRequested = false
+        setBusy(true)
+        // Le fichier MP3 va être réécrit : la lecture de ce morceau est suspendue le temps de l'opération.
+        val info = fileInfo
+        if (isMp3 && info != null) playerController.pauseForFileEdit(info.id.toString())
+        runSave(allowFileWrite = true)
+    }
+
+    private fun runSave(allowFileWrite: Boolean) {
+        val info = fileInfo ?: return
+        val tags = collectTags() ?: run {
+            endSaving()
+            return
+        }
+        lifecycleScope.launch {
+            val outcome = repository.save(info, tags, newCoverJpeg, allowFileWrite)
+            when (outcome) {
+                is SaveOutcome.Saved -> finishSaved(info, tags, outcome.fileRewritten)
+                SaveOutcome.NeedsPermission -> requestWriteAccess(info)
+                is SaveOutcome.Failed -> {
+                    endSaving()
+                    playerController.cancelFileEdit()
+                    Toast.makeText(
+                        this@TagEditorActivity,
+                        getString(R.string.tag_save_error, outcome.message ?: getString(R.string.tag_tech_unknown)),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    /** Demande au système l'autorisation d'écrire dans ce fichier (MediaStore.createWriteRequest). */
+    private fun requestWriteAccess(info: AudioFileInfo) {
+        if (writeRequested) {
+            onWriteAccessUnavailable(R.string.tag_write_refused)
+            return
+        }
+        writeRequested = true
+        try {
+            val sender = MediaStore.createWriteRequest(contentResolver, listOf(info.uri)).intentSender
+            writeRequestLauncher.launch(IntentSenderRequest.Builder(sender).build())
+        } catch (error: Exception) {
+            onWriteAccessUnavailable(R.string.tag_write_refused)
+        }
+    }
+
+    private fun onWriteRequestResult(granted: Boolean) {
+        if (!saving) return
+        if (granted) {
+            runSave(allowFileWrite = true)
+        } else {
+            onWriteAccessUnavailable(R.string.tag_write_denied)
+        }
+    }
+
+    /** Autorisation absente : un MP3 n'est pas modifié ; les autres formats sont enregistrés dans la base seulement. */
+    private fun onWriteAccessUnavailable(messageRes: Int) {
+        if (isMp3) {
+            endSaving()
+            playerController.cancelFileEdit()
+            Toast.makeText(this, messageRes, Toast.LENGTH_LONG).show()
+        } else {
+            runSave(allowFileWrite = false)
+        }
+    }
+
+    private fun finishSaved(info: AudioFileInfo, tags: TagData, fileRewritten: Boolean) {
+        val displayTitle = TitleCleaner(this).clean(tags.title)
+        playerController.applyEditedMetadata(
+            mediaId = info.id.toString(),
+            title = displayTitle,
+            artist = tags.artist.ifBlank { null },
+            album = tags.album.ifBlank { null },
+            reloadSource = fileRewritten
+        )
+        Toast.makeText(
+            this,
+            if (fileRewritten) R.string.tag_saved_file else R.string.tag_saved_library,
+            Toast.LENGTH_LONG
+        ).show()
+        lifecycleScope.launch {
+            delay(300L)
+            finish()
+        }
+    }
+
+    private fun endSaving() {
+        saving = false
+        setBusy(false)
+    }
+
+    private fun setBusy(busy: Boolean) {
+        binding.buttonTagSave.isEnabled = !busy
+        binding.buttonTagCancel.isEnabled = !busy
+        binding.buttonAutoFill.isEnabled = !busy
+        binding.buttonChangeCover.isEnabled = !busy && isMp3
+        binding.progressTagLoading.visibility = if (busy) View.VISIBLE else View.GONE
+    }
+
+    companion object {
+        private const val EXTRA_SONG_ID = "elg.tag_editor.song_id"
+        private const val INVALID_ID = -1L
+        private const val KEY_ACCEPTED = "tag_warning_accepted"
+        private const val KEY_FORM = "tag_form"
+        private const val KEY_COVER = "tag_new_cover"
+
+        fun newIntent(context: Context, songId: Long): Intent =
+            Intent(context, TagEditorActivity::class.java).putExtra(EXTRA_SONG_ID, songId)
+    }
+}
+EOF
+
+echo "  -> app/src/main/res/layout/activity_tag_editor.xml"
+mkdir -p app/src/main/res/layout
+cat << 'EOF' > app/src/main/res/layout/activity_tag_editor.xml
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="0dp"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorSurface"
+        app:title="@string/tag_editor_title"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <ProgressBar
+        android:id="@+id/progressTagLoading"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/toolbar" />
+
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/scrollTagEditor"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:clipToPadding="false"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/layoutTagActions"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/toolbar">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="24dp">
+
+            <ImageView
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:importantForAccessibility="no"
+                android:scaleType="fitXY"
+                android:src="@drawable/ic_flag_rca_strip" />
+
+            <!-- ===== EN-TÊTE : POCHETTE ===== -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:id="@+id/imageTagCover"
+                    android:layout_width="120dp"
+                    android:layout_height="120dp"
+                    android:contentDescription="@string/tag_cover_description"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/ic_artwork_default"
+                    app:shapeAppearanceOverlay="@style/ShapeAppearance.Elg.RoundedLarge" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="16dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <Button
+                        android:id="@+id/buttonChangeCover"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:minHeight="48dp"
+                        android:text="@string/tag_cover_change" />
+
+                    <TextView
+                        android:id="@+id/textTagCoverNote"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/tag_cover_mp3_only"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:visibility="gone" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/buttonAutoFill"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:minHeight="48dp"
+                android:text="@string/tag_autofill_button" />
+
+            <TextView
+                android:id="@+id/textTagFormatNote"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/tag_non_mp3_note"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:visibility="gone" />
+
+            <!-- ===== FORMULAIRE ===== -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:accessibilityHeading="true"
+                android:text="@string/tag_section_info"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:textColor="?attr/colorPrimary" />
+
+            <LinearLayout
+                android:id="@+id/layoutTagFields"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <com.google.android.material.divider.MaterialDivider
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="16dp" />
+
+            <!-- ===== INSPECTEUR TECHNIQUE ===== -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:accessibilityHeading="true"
+                android:text="@string/tag_section_tech"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:textColor="?attr/colorPrimary" />
+
+            <TextView
+                android:id="@+id/textTechFormat"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+            <TextView
+                android:id="@+id/textTechBitrate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+            <TextView
+                android:id="@+id/textTechSampleRate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+            <TextView
+                android:id="@+id/textTechSize"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+            <TextView
+                android:id="@+id/textTechPath"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textAppearance="?attr/textAppearanceBodyLarge"
+                android:textIsSelectable="true" />
+
+        </LinearLayout>
+
+    </androidx.core.widget.NestedScrollView>
+
+    <LinearLayout
+        android:id="@+id/layoutTagActions"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="?attr/colorSurfaceContainerHigh"
+        android:gravity="center_vertical|end"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <Button
+            android:id="@+id/buttonTagCancel"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="@string/tag_cancel" />
+
+        <Button
+            android:id="@+id/buttonTagSave"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:minHeight="48dp"
+            android:text="@string/tag_save" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
+EOF
+
+echo "  -> app/src/main/res/layout/item_tag_field.xml"
+mkdir -p app/src/main/res/layout
+cat << 'EOF' > app/src/main/res/layout/item_tag_field.xml
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Champ de formulaire de l'éditeur de tags, instancié par TagEditorActivity pour chaque métadonnée. -->
+<com.google.android.material.textfield.TextInputLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/inputLayoutTagField"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="8dp">
+
+    <com.google.android.material.textfield.TextInputEditText
+        android:id="@+id/editTagField"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:importantForAutofill="no" />
+
+</com.google.android.material.textfield.TextInputLayout>
+EOF
+
 echo "[3/3] Verification rapide de la presence des fichiers cles..."
 MISSING=0
 if [ ! -s "app/debug.keystore" ]; then echo "MANQUANT: app/debug.keystore"; MISSING=1; fi
@@ -10356,6 +12286,13 @@ if [ ! -f "app/build.gradle" ]; then echo "MANQUANT: app/build.gradle"; MISSING=
 if [ ! -f "app/src/main/java/com/elg/music/ui/main/MainActivity.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/main/MainActivity.kt"; MISSING=1; fi
 if [ ! -f "app/src/main/java/com/elg/music/playback/MusicPlaybackService.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/playback/MusicPlaybackService.kt"; MISSING=1; fi
 if [ ! -f ".github/workflows/build.yml" ]; then echo "MANQUANT: .github/workflows/build.yml"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/model/TagData.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/model/TagData.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/repository/Id3TagCodec.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/repository/Id3TagCodec.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/repository/FilenameTagParser.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/repository/FilenameTagParser.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/repository/TagRepository.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/repository/TagRepository.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/ui/tags/TagEditorActivity.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/tags/TagEditorActivity.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/res/layout/activity_tag_editor.xml" ]; then echo "MANQUANT: app/src/main/res/layout/activity_tag_editor.xml"; MISSING=1; fi
+if [ ! -f "app/src/main/res/layout/item_tag_field.xml" ]; then echo "MANQUANT: app/src/main/res/layout/item_tag_field.xml"; MISSING=1; fi
 if [ "$MISSING" -eq 0 ]; then
   echo ""
   echo "=== ELG MUSIC : PROJET ET WORKFLOW GITHUB ACTIONS INSTALLES AVEC SUCCES ==="
