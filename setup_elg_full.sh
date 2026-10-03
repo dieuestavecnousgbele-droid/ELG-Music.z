@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-echo "=== ELG Music v1.5 (etapes 1 a 6 : ecriture physique multi-formats, anti-force brute progressive, lecteur persistant) : projet complet + workflow GitHub Actions ==="
+echo "=== ELG Music V1.06 (correctif coffre-fort + date d'enregistrement dans l'editeur de tags, base v1.5) : projet complet + workflow GitHub Actions ==="
 echo "(a lancer depuis la racine du depot, dans un terminal Linux standard)"
 echo ""
 
@@ -23,7 +23,7 @@ mkdir -p app/src/main/res/mipmap-anydpi
 mkdir -p app/src/main/res/values
 mkdir -p app/src/main/res/xml
 
-echo "[2/3] Ecriture des 128 fichiers..."
+echo "[2/3] Ecriture des 129 fichiers..."
 echo "  -> settings.gradle"
 cat << 'EOF' > settings.gradle
 include ':app'
@@ -89,8 +89,8 @@ android {
         applicationId 'com.elg.music'
         minSdk 33
         targetSdk 36
-        versionCode 10
-        versionName '1.5'
+        versionCode 11
+        versionName '1.06'
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
@@ -691,6 +691,29 @@ cat << 'EOF' > app/src/main/res/values/strings.xml
     <string name="tag_cancel">Annuler</string>
     <string name="tag_error_title_empty">Le titre ne peut pas être vide.</string>
     <string name="tag_error_number">Saisissez uniquement des chiffres (4 au maximum).</string>
+    <string name="tag_section_record_date">Date d\'enregistrement (facultative)</string>
+    <string name="tag_field_record_day">Jour</string>
+    <string name="tag_field_record_month">Mois</string>
+    <string name="tag_month_none">(aucun)</string>
+    <string name="tag_error_date_year_required">Pour enregistrer une date, saisissez l\'année sur 4 chiffres.</string>
+    <string name="tag_error_date_month_required">Choisissez le mois correspondant au jour.</string>
+    <string name="tag_error_date_day_invalid">Jour invalide pour ce mois.</string>
+    <string name="tag_error_date_future">La date d\'enregistrement ne peut pas être dans le futur.</string>
+    <string-array name="tag_month_choices">
+        <item>(aucun)</item>
+        <item>Janvier</item>
+        <item>Février</item>
+        <item>Mars</item>
+        <item>Avril</item>
+        <item>Mai</item>
+        <item>Juin</item>
+        <item>Juillet</item>
+        <item>Août</item>
+        <item>Septembre</item>
+        <item>Octobre</item>
+        <item>Novembre</item>
+        <item>Décembre</item>
+    </string-array>
     <string name="tag_load_error">Impossible de lire ce fichier audio.</string>
     <string name="tag_save_error">Enregistrement impossible : %1$s</string>
     <string name="tag_write_denied">Autorisation refusée : les tags n\'ont pas été modifiés.</string>
@@ -7328,6 +7351,7 @@ cat << 'EOF' > app/src/main/java/com/elg/music/data/local/ElgDatabase.kt
 package com.elg.music.data.local
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Delete
@@ -7411,6 +7435,8 @@ data class TagEntryEntity(
     val language: String,
     val comment: String,
     val lyrics: String,
+    @ColumnInfo(defaultValue = "''") val recordingMonth: String = "",
+    @ColumnInfo(defaultValue = "''") val recordingDay: String = "",
     val fileWritten: Boolean,
     val updatedAtMs: Long
 )
@@ -7436,7 +7462,7 @@ interface TagDao {
  * Base Room locale de l'application. Elle reste volontairement petite : les favoris, la liste noire,
  * les playlists et le tri restent dans leurs stockages actuels, pour ne rien casser du socle v1.3.
  */
-@Database(entities = [VaultEntryEntity::class, TagEntryEntity::class], version = 2, exportSchema = false)
+@Database(entities = [VaultEntryEntity::class, TagEntryEntity::class], version = 3, exportSchema = false)
 abstract class ElgDatabase : RoomDatabase() {
 
     abstract fun vaultDao(): VaultDao
@@ -7462,6 +7488,14 @@ abstract class ElgDatabase : RoomDatabase() {
             }
         }
 
+        /** Version 2 -> 3 (V1.06) : ajoute le mois et le jour de la date d'enregistrement, sans toucher aux données. */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `tag_entries` ADD COLUMN `recordingMonth` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `tag_entries` ADD COLUMN `recordingDay` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         @Volatile
         private var instance: ElgDatabase? = null
 
@@ -7472,7 +7506,7 @@ abstract class ElgDatabase : RoomDatabase() {
                     ElgDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build().also { instance = it }
             }
     }
@@ -8524,7 +8558,12 @@ class VaultPinStore(context: Context) {
     }
 
     /** Secondes restantes avant la fin du blocage en cours (0 si la saisie est possible). */
-    suspend fun remainingLockSeconds(): Int = secondsFor(remainingLockMillis(readPrefs()))
+    suspend fun remainingLockSeconds(): Int {
+        val remaining = remainingLockMillis(readPrefs())
+        // V1.06 : 0 = aucun blocage. secondsFor() renvoie au minimum 1 seconde ; l'utiliser pour un temps nul
+        // faisait afficher « Réessayez dans 00:01 » en permanence, dès l'ouverture, sans aucun code saisi.
+        return if (remaining <= 0L) 0 else secondsFor(remaining)
+    }
 
     /** Niveau de pénalité actuel (0 = aucun blocage imposé jusqu'ici, 9 = niveau maximal). */
     suspend fun lockoutLevel(): Int = readPrefs()[KEY_LOCKOUT_LEVEL] ?: 0
@@ -10881,6 +10920,7 @@ cat << 'EOF' > app/src/main/java/com/elg/music/data/model/TagData.kt
 package com.elg.music.data.model
 
 import android.net.Uri
+import java.util.Locale
 
 /**
  * Métadonnées modifiables d'un morceau (éditeur de tags, étape 6 de la v1.4).
@@ -10902,8 +10942,26 @@ data class TagData(
     val encoder: String = "",
     val language: String = "",
     val comment: String = "",
-    val lyrics: String = ""
-)
+    val lyrics: String = "",
+    /** Mois de la date d'enregistrement (« 1 » à « 12 »), vide si non renseigné ; l'année est [year]. */
+    val recordingMonth: String = "",
+    /** Jour de la date d'enregistrement (« 1 » à « 31 »), vide si non renseigné ; nécessite le mois. */
+    val recordingDay: String = ""
+) {
+    /**
+     * Date écrite dans les fichiers (ISO 8601) : « 2023 », « 2023-01 » ou « 2023-01-15 ».
+     * L'année seule est renvoyée si le mois est absent ou si l'année n'a pas 4 chiffres.
+     */
+    val dateText: String
+        get() {
+            val y = year.trim()
+            if (y.length != 4) return y
+            val m = recordingMonth.toIntOrNull()?.takeIf { it in 1..12 } ?: return y
+            val withMonth = String.format(Locale.ROOT, "%s-%02d", y, m)
+            val d = recordingDay.toIntOrNull()?.takeIf { it in 1..31 } ?: return withMonth
+            return String.format(Locale.ROOT, "%s-%02d", withMonth, d)
+        }
+}
 
 /** Fichier audio tel que décrit par le MediaStore (source de l'éditeur de tags). */
 data class AudioFileInfo(
@@ -10931,6 +10989,26 @@ data class TechInfo(
     val sizeBytes: Long,
     val path: String
 )
+
+/** Date d'enregistrement décomposée ; une chaîne vide signifie « absent ». */
+data class RecordingDateParts(val year: String, val month: String, val day: String)
+
+/** Lecture des dates ISO 8601 partielles (« 2023 », « 2023-01 », « 2023-01-15 », « 20230115 »). */
+object RecordingDate {
+
+    private val FLEXIBLE = Regex("^(\\d{4})(?:-?(\\d{2})(?:-?(\\d{2}))?)?")
+    private val STRICT_PREFIX = Regex("^\\d{4}(?:-\\d{2}(?:-\\d{2})?)?")
+
+    fun parse(text: String): RecordingDateParts {
+        val match = FLEXIBLE.find(text.trim()) ?: return RecordingDateParts("", "", "")
+        val month = match.groupValues[2].toIntOrNull()?.takeIf { it in 1..12 }
+        val day = if (month != null) match.groupValues[3].toIntOrNull()?.takeIf { it in 1..31 } else null
+        return RecordingDateParts(match.groupValues[1], month?.toString().orEmpty(), day?.toString().orEmpty())
+    }
+
+    /** Début « AAAA[-MM[-JJ]] » d'une date ISO (l'heure éventuelle qui suit est ignorée). */
+    fun isoPrefix(text: String): String = STRICT_PREFIX.find(text.trim())?.value.orEmpty()
+}
 EOF
 
 echo "  -> app/src/main/java/com/elg/music/data/repository/Id3TagCodec.kt"
@@ -10938,6 +11016,7 @@ mkdir -p app/src/main/java/com/elg/music/data/repository
 cat << 'EOF' > app/src/main/java/com/elg/music/data/repository/Id3TagCodec.kt
 package com.elg.music.data.repository
 
+import com.elg.music.data.model.RecordingDate
 import com.elg.music.data.model.TagData
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
@@ -11057,9 +11136,9 @@ object Id3TagCodec {
 
         val (trackNumber, trackTotal) = splitPair(text("TRCK"))
         val disc = splitPair(text("TPOS")).first
-        val dateYear = Regex("^\\d{4}").find(text("TDRC"))?.value
-            ?: Regex("^\\d{4}").find(text("TYER"))?.value
-            ?: ""
+        val recorded = RecordingDate.parse(text("TDRC"))
+        val hasDate = recorded.year.isNotEmpty()
+        val dateYear = recorded.year.ifEmpty { Regex("^\\d{4}").find(text("TYER"))?.value.orEmpty() }
         val commentIndex = pickDescribedIndex(frames, "COMM")
         val lyricsIndex = pickDescribedIndex(frames, "USLT")
         return TagData(
@@ -11069,6 +11148,8 @@ object Id3TagCodec {
             albumArtist = text("TPE2"),
             genre = genreName(text("TCON")),
             year = dateYear,
+            recordingMonth = if (hasDate) recorded.month else "",
+            recordingDay = if (hasDate) recorded.day else "",
             trackNumber = trackNumber,
             trackTotal = trackTotal,
             discNumber = disc,
@@ -11141,8 +11222,11 @@ object Id3TagCodec {
         textFrame("TALB", tags.album)
         textFrame("TPE2", tags.albumArtist)
         textFrame("TCON", tags.genre)
-        // Date complète d'origine conservée tant que l'année saisie n'a pas changé.
-        val date = if (tags.year.isNotBlank() && oldDate.length >= 4 && oldDate.startsWith(tags.year)) oldDate else tags.year
+        // Date d'enregistrement (ISO 8601 : année, année-mois ou année-mois-jour). L'ancienne valeur, heure comprise,
+        // n'est conservée que si la date saisie est strictement la même.
+        val newDate = tags.dateText
+        val oldPrefix = RecordingDate.isoPrefix(oldDate)
+        val date = if (newDate.isNotBlank() && oldPrefix == newDate && oldDate.length > oldPrefix.length) oldDate else newDate
         textFrame("TDRC", date)
         textFrame("TRCK", pair(tags.trackNumber, tags.trackTotal))
         textFrame("TPOS", tags.discNumber)
@@ -11827,14 +11911,17 @@ class TagRepository(context: Context) {
         encoder = top.encoder.ifBlank { encoder },
         language = top.language.ifBlank { language },
         comment = top.comment.ifBlank { comment },
-        lyrics = top.lyrics.ifBlank { lyrics }
+        lyrics = top.lyrics.ifBlank { lyrics },
+        recordingMonth = top.recordingMonth.ifBlank { recordingMonth },
+        recordingDay = top.recordingDay.ifBlank { recordingDay }
     )
 
     private fun TagEntryEntity.toTagData(): TagData = TagData(
         title = title, artist = artist, album = album, albumArtist = albumArtist, genre = genre,
         year = year, trackNumber = trackNumber, trackTotal = trackTotal, discNumber = discNumber,
         composer = composer, copyright = copyright, publisher = publisher, encoder = encoder,
-        language = language, comment = comment, lyrics = lyrics
+        language = language, comment = comment, lyrics = lyrics,
+        recordingMonth = recordingMonth, recordingDay = recordingDay
     )
 
     private fun TagData.toEntity(mediaId: Long, fileWritten: Boolean): TagEntryEntity = TagEntryEntity(
@@ -11842,6 +11929,7 @@ class TagRepository(context: Context) {
         genre = genre, year = year, trackNumber = trackNumber, trackTotal = trackTotal,
         discNumber = discNumber, composer = composer, copyright = copyright, publisher = publisher,
         encoder = encoder, language = language, comment = comment, lyrics = lyrics,
+        recordingMonth = recordingMonth, recordingDay = recordingDay,
         fileWritten = fileWritten, updatedAtMs = System.currentTimeMillis()
     )
 
@@ -11887,6 +11975,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.PickVisualMediaRequest
@@ -11907,12 +11996,15 @@ import com.elg.music.data.repository.TagRepository
 import com.elg.music.data.repository.TitleCleaner
 import com.elg.music.databinding.ActivityTagEditorBinding
 import com.elg.music.databinding.ItemTagFieldBinding
+import com.elg.music.databinding.ItemTagMonthBinding
 import com.elg.music.playback.PlayerController
 import com.elg.music.ui.applySystemBarPadding
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
+import java.time.LocalDate
+import java.time.YearMonth
 import java.util.Locale
 
 private const val TEXT_WORDS = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_WORDS
@@ -11929,6 +12021,7 @@ private enum class TagField(@StringRes val labelRes: Int, val inputType: Int, va
     ALBUM_ARTIST(R.string.tag_field_album_artist, TEXT_WORDS, 200),
     GENRE(R.string.tag_field_genre, TEXT_WORDS, 100),
     YEAR(R.string.tag_field_year, TEXT_NUMBER, 4),
+    RECORD_DAY(R.string.tag_field_record_day, TEXT_NUMBER, 2),
     DISC(R.string.tag_field_disc, TEXT_NUMBER, 4),
     TRACK(R.string.tag_field_track, TEXT_NUMBER, 4),
     TRACK_TOTAL(R.string.tag_field_track_total, TEXT_NUMBER, 4),
@@ -11969,6 +12062,8 @@ class TagEditorActivity : AppCompatActivity() {
     private val playerController: PlayerController by lazy { PlayerController(this) }
 
     private val rows = LinkedHashMap<TagField, FieldRow>()
+    private var monthBinding: ItemTagMonthBinding? = null
+    private var selectedMonth = 0
     private var songId = INVALID_ID
     private var fileInfo: AudioFileInfo? = null
     private var fileWritable = false
@@ -12051,6 +12146,7 @@ class TagEditorActivity : AppCompatActivity() {
         if (loaded) {
             outState.putBundle(KEY_FORM, Bundle().apply {
                 rows.forEach { (field, row) -> putString(field.name, row.value) }
+                putInt(KEY_MONTH, selectedMonth)
             })
         }
         newCoverJpeg?.let { outState.putByteArray(KEY_COVER, it) }
@@ -12089,8 +12185,9 @@ class TagEditorActivity : AppCompatActivity() {
         addRow(TagField.ALBUM)
         addRow(TagField.ALBUM_ARTIST)
         addRow(TagField.GENRE)
-        addRow(TagField.YEAR, TagField.DISC)
+        addDateSection()
         addRow(TagField.TRACK, TagField.TRACK_TOTAL)
+        addRow(TagField.DISC)
         addRow(TagField.COMPOSER)
         addRow(TagField.COPYRIGHT)
         addRow(TagField.PUBLISHER)
@@ -12115,6 +12212,58 @@ class TagEditorActivity : AppCompatActivity() {
             line.addView(view)
         }
         container.addView(line)
+    }
+
+    private fun monthChoices(): List<String> = resources.getStringArray(R.array.tag_month_choices).toList()
+
+    /**
+     * Date d'enregistrement (facultative) : jour saisi à la main, mois choisi dans une liste déroulante
+     * (janvier à décembre), année saisie à la main (c'est le champ « Année »).
+     */
+    private fun addDateSection() {
+        val container = binding.layoutTagFields
+        val density = resources.displayMetrics.density
+        val gap = (12 * density).toInt()
+        container.addView(TextView(this).apply {
+            setText(R.string.tag_section_record_date)
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelLarge)
+            setPadding(0, (16 * density).toInt(), 0, 0)
+        })
+
+        val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+
+        val dayView = createField(TagField.RECORD_DAY, line).binding.root
+        dayView.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f)
+        line.addView(dayView)
+
+        val month = ItemTagMonthBinding.inflate(layoutInflater, line, false)
+        monthBinding = month
+        month.autoTagMonth.isSaveEnabled = false
+        month.autoTagMonth.setOnItemClickListener { parent, _, position, _ ->
+            val chosen = parent.getItemAtPosition(position)?.toString().orEmpty()
+            selectedMonth = monthChoices().indexOf(chosen).coerceAtLeast(0)
+            month.inputLayoutTagMonth.error = null
+        }
+        month.root.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.6f).apply {
+            marginStart = gap
+        }
+        line.addView(month.root)
+
+        val yearView = createField(TagField.YEAR, line).binding.root
+        yearView.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+            marginStart = gap
+        }
+        line.addView(yearView)
+
+        container.addView(line)
+    }
+
+    /** Sélectionne le mois (0 = aucun, 1 = janvier … 12 = décembre) dans la liste déroulante. */
+    private fun setMonth(month: Int) {
+        selectedMonth = month.coerceIn(0, 12)
+        val label = if (selectedMonth == 0) "" else monthChoices().getOrNull(selectedMonth).orEmpty()
+        monthBinding?.autoTagMonth?.setText(label, false)
+        monthBinding?.inputLayoutTagMonth?.error = null
     }
 
     private fun createField(field: TagField, parent: ViewGroup): FieldRow {
@@ -12165,6 +12314,7 @@ class TagEditorActivity : AppCompatActivity() {
             fillForm(bundle.tags)
             savedForm?.let { form ->
                 rows.forEach { (field, row) -> form.getString(field.name)?.let { row.value = it } }
+                if (form.containsKey(KEY_MONTH)) setMonth(form.getInt(KEY_MONTH))
                 savedForm = null
             }
             renderTech(bundle.tech)
@@ -12194,6 +12344,8 @@ class TagEditorActivity : AppCompatActivity() {
         set(TagField.ALBUM_ARTIST, tags.albumArtist)
         set(TagField.GENRE, tags.genre)
         set(TagField.YEAR, tags.year)
+        set(TagField.RECORD_DAY, tags.recordingDay)
+        setMonth(tags.recordingMonth.toIntOrNull() ?: 0)
         set(TagField.TRACK, tags.trackNumber)
         set(TagField.TRACK_TOTAL, tags.trackTotal)
         set(TagField.DISC, tags.discNumber)
@@ -12272,8 +12424,41 @@ class TagEditorActivity : AppCompatActivity() {
                 invalid(field, R.string.tag_error_number)
             }
         }
+        // Date d'enregistrement (facultative) : jour + mois + année cohérents, et pas dans le futur.
+        var monthInvalid = false
+        val dayText = value(TagField.RECORD_DAY)
+        val yearText = value(TagField.YEAR)
+        if (dayText.isNotEmpty() || selectedMonth != 0) {
+            val yearValue = yearText.takeIf { it.length == 4 && it.all { c -> c in '0'..'9' } }?.toInt()
+            val dayValue = dayText.toIntOrNull()
+            if (yearValue == null) {
+                invalid(TagField.YEAR, R.string.tag_error_date_year_required)
+            } else if (dayText.isNotEmpty() && selectedMonth == 0) {
+                monthInvalid = true
+                monthBinding?.inputLayoutTagMonth?.error = getString(R.string.tag_error_date_month_required)
+            } else {
+                val lastDay = YearMonth.of(yearValue, selectedMonth.coerceAtLeast(1)).lengthOfMonth()
+                if (dayText.isNotEmpty() && (dayValue == null || dayValue !in 1..lastDay)) {
+                    invalid(TagField.RECORD_DAY, R.string.tag_error_date_day_invalid)
+                } else {
+                    val candidate = LocalDate.of(yearValue, selectedMonth.coerceAtLeast(1), dayValue ?: 1)
+                    if (candidate.isAfter(LocalDate.now())) {
+                        if (dayText.isNotEmpty()) {
+                            invalid(TagField.RECORD_DAY, R.string.tag_error_date_future)
+                        } else {
+                            monthInvalid = true
+                            monthBinding?.inputLayoutTagMonth?.error = getString(R.string.tag_error_date_future)
+                        }
+                    }
+                }
+            }
+        }
         firstInvalid?.let { field ->
             rows[field]?.binding?.editTagField?.requestFocus()
+            return null
+        }
+        if (monthInvalid) {
+            monthBinding?.autoTagMonth?.requestFocus()
             return null
         }
         return TagData(
@@ -12292,7 +12477,9 @@ class TagEditorActivity : AppCompatActivity() {
             encoder = value(TagField.ENCODER),
             language = value(TagField.LANGUAGE),
             comment = value(TagField.COMMENT),
-            lyrics = value(TagField.LYRICS)
+            lyrics = value(TagField.LYRICS),
+            recordingMonth = if (selectedMonth in 1..12) selectedMonth.toString() else "",
+            recordingDay = dayText.toIntOrNull()?.toString().orEmpty()
         )
     }
 
@@ -12408,6 +12595,7 @@ class TagEditorActivity : AppCompatActivity() {
         private const val KEY_ACCEPTED = "tag_warning_accepted"
         private const val KEY_FORM = "tag_form"
         private const val KEY_COVER = "tag_new_cover"
+        private const val KEY_MONTH = "tag_record_month"
 
         fun newIntent(context: Context, songId: Long): Intent =
             Intent(context, TagEditorActivity::class.java).putExtra(EXTRA_SONG_ID, songId)
@@ -12657,6 +12845,30 @@ cat << 'EOF' > app/src/main/res/layout/item_tag_field.xml
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:importantForAutofill="no" />
+
+</com.google.android.material.textfield.TextInputLayout>
+EOF
+
+echo "  -> app/src/main/res/layout/item_tag_month.xml"
+mkdir -p app/src/main/res/layout
+cat << 'EOF' > app/src/main/res/layout/item_tag_month.xml
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Liste déroulante du mois de la date d'enregistrement (éditeur de tags, V1.06). -->
+<com.google.android.material.textfield.TextInputLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/inputLayoutTagMonth"
+    style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="8dp"
+    android:hint="@string/tag_field_record_month">
+
+    <com.google.android.material.textfield.MaterialAutoCompleteTextView
+        android:id="@+id/autoTagMonth"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="none"
+        app:simpleItems="@array/tag_month_choices" />
 
 </com.google.android.material.textfield.TextInputLayout>
 EOF
@@ -13002,7 +13214,7 @@ internal object VorbisComments {
         add("ALBUM", tags.album)
         add("ALBUMARTIST", tags.albumArtist)
         add("GENRE", tags.genre)
-        add("DATE", tags.year)
+        add("DATE", tags.dateText)
         add("TRACKNUMBER", tags.trackNumber)
         add("TRACKTOTAL", tags.trackTotal)
         add("DISCNUMBER", tags.discNumber)
@@ -13567,7 +13779,7 @@ object Mp4TagWriter {
         text(T_ALBUM, tags.album)
         text("aART", tags.albumArtist)
         text(T_GENRE, tags.genre)
-        text(T_YEAR, tags.year)
+        text(T_YEAR, tags.dateText)
         text(T_COMPOSER, tags.composer)
         text("cprt", tags.copyright)
         text(T_ENCODER, tags.encoder)
@@ -13823,7 +14035,7 @@ object Apev2TagWriter {
             text("Album", tags.album)
             text("Album Artist", tags.albumArtist)
             text("Genre", tags.genre)
-            text("Year", tags.year)
+            text("Year", tags.dateText)
             if (tags.trackNumber.isNotBlank()) {
                 text("Track", if (tags.trackTotal.isNotBlank()) "${tags.trackNumber.trim()}/${tags.trackTotal.trim()}" else tags.trackNumber)
             }
@@ -13986,7 +14198,7 @@ object AsfTagWriter {
             text("WM/AlbumTitle", tags.album)
             text("WM/AlbumArtist", tags.albumArtist)
             text("WM/Genre", tags.genre)
-            text("WM/Year", tags.year)
+            text("WM/Year", tags.dateText)
             if (tags.trackNumber.isNotBlank()) text("WM/TrackNumber", tags.trackNumber)
             if (tags.discNumber.isNotBlank()) text("WM/PartOfSet", tags.discNumber)
             text("WM/Composer", tags.composer)
@@ -14234,7 +14446,7 @@ object MatroskaTagWriter {
         add("ALBUM", tags.album)
         add("ALBUM_ARTIST", tags.albumArtist)
         add("GENRE", tags.genre)
-        add("DATE_RELEASED", tags.year)
+        add("DATE_RELEASED", tags.dateText)
         add("PART_NUMBER", tags.trackNumber)
         add("TOTAL_PARTS", tags.trackTotal)
         add("DISC_NUMBER", tags.discNumber)
@@ -14373,6 +14585,7 @@ if [ ! -f "app/src/main/java/com/elg/music/data/repository/TagRepository.kt" ]; 
 if [ ! -f "app/src/main/java/com/elg/music/ui/tags/TagEditorActivity.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/tags/TagEditorActivity.kt"; MISSING=1; fi
 if [ ! -f "app/src/main/res/layout/activity_tag_editor.xml" ]; then echo "MANQUANT: app/src/main/res/layout/activity_tag_editor.xml"; MISSING=1; fi
 if [ ! -f "app/src/main/res/layout/item_tag_field.xml" ]; then echo "MANQUANT: app/src/main/res/layout/item_tag_field.xml"; MISSING=1; fi
+if [ ! -f "app/src/main/res/layout/item_tag_month.xml" ]; then echo "MANQUANT: app/src/main/res/layout/item_tag_month.xml"; MISSING=1; fi
 if [ ! -f "app/src/main/java/com/elg/music/data/local/PlaybackStateStore.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/local/PlaybackStateStore.kt"; MISSING=1; fi
 if [ ! -f "app/src/main/java/com/elg/music/playback/MediaItemFactory.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/playback/MediaItemFactory.kt"; MISSING=1; fi
 if [ ! -f "app/src/main/java/com/elg/music/data/repository/AudioTagWriter.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/repository/AudioTagWriter.kt"; MISSING=1; fi
