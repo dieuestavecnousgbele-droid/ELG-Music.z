@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-echo "=== ELG Music v1.04 (etape 6 : editeur de tags ID3 Studio Edition) : projet complet + workflow GitHub Actions ==="
+echo "=== ELG Music v1.5 (etapes 1 a 6 : ecriture physique multi-formats, anti-force brute progressive, lecteur persistant) : projet complet + workflow GitHub Actions ==="
 echo "(a lancer depuis la racine du depot, dans un terminal Linux standard)"
 echo ""
 
@@ -23,7 +23,7 @@ mkdir -p app/src/main/res/mipmap-anydpi
 mkdir -p app/src/main/res/values
 mkdir -p app/src/main/res/xml
 
-echo "[2/3] Ecriture des 117 fichiers..."
+echo "[2/3] Ecriture des 128 fichiers..."
 echo "  -> settings.gradle"
 cat << 'EOF' > settings.gradle
 include ':app'
@@ -89,8 +89,8 @@ android {
         applicationId 'com.elg.music'
         minSdk 33
         targetSdk 36
-        versionCode 9
-        versionName '1.04'
+        versionCode 10
+        versionName '1.5'
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
@@ -271,6 +271,16 @@ cat << 'EOF' > app/src/main/AndroidManifest.xml
             android:exported="false"
             android:label="@string/tag_editor_title"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- v1.5 : boutons physiques (écouteurs filaires, Bluetooth, geste TalkBack à deux doigts) : relance le service
+             de lecture et la musique même si l'application est fermée -->
+        <receiver
+            android:name="androidx.media3.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
 
         <!-- Service de lecture audio (Media3 / MediaSessionService) -->
         <service
@@ -579,6 +589,7 @@ cat << 'EOF' > app/src/main/res/values/strings.xml
     <string name="vault_pin_error_mismatch">Les deux codes ne sont pas identiques.</string>
     <string name="vault_pin_error_wrong">Code incorrect. %1$d essai(s) avant blocage temporaire.</string>
     <string name="vault_pin_error_locked">Trop d\'essais. Réessayez dans %1$d s.</string>
+    <string name="vault_pin_error_locked_countdown">Nombre maximal de tentatives atteint. Réessayez dans %1$s</string>
     <string name="vault_pin_changed_message">Code PIN modifié</string>
 
     <string name="vault_empty_message">Le coffre-fort est vide. Utilisez « Masquer cette musique » dans le menu d\'un titre.</string>
@@ -642,13 +653,13 @@ cat << 'EOF' > app/src/main/res/values/strings.xml
 
     <string name="tag_cover_description">Pochette de l\'album</string>
     <string name="tag_cover_change">Changer la pochette</string>
-    <string name="tag_cover_mp3_only">La pochette ne peut être intégrée qu\'aux fichiers MP3.</string>
+    <string name="tag_cover_mp3_only">Ce format n\'a pas de structure d\'image interne : la pochette est conservée dans le cache sécurisé d\'ELG Music, sans modifier le fichier audio.</string>
     <string name="tag_cover_updated">Nouvelle pochette sélectionnée</string>
     <string name="tag_cover_error">Impossible de lire cette image.</string>
     <string name="tag_autofill_button">Remplir automatiquement depuis le nom de fichier</string>
     <string name="tag_autofill_done">Champs remplis depuis le nom du fichier</string>
     <string name="tag_autofill_nothing">Aucune information exploitable dans le nom du fichier</string>
-    <string name="tag_non_mp3_note">Ce format ne permet pas l\'écriture des tags dans le fichier : les champs sont conservés par ELG Music, et titre, artiste, album, genre, année, piste et compositeur sont aussi mis à jour dans la bibliothèque Android.</string>
+    <string name="tag_non_mp3_note">Ce format (MIDI, AMR, AC-3, DTS…) ne permet pas d\'écrire les tags dans le fichier sans risque de le corrompre : les champs sont conservés par ELG Music, et titre, artiste, album, genre, année, piste et compositeur sont aussi mis à jour dans la bibliothèque Android.</string>
 
     <string name="tag_section_info">Informations</string>
     <string name="tag_field_title">Titre</string>
@@ -1946,7 +1957,7 @@ class SongRepository(context: Context) {
         private const val MIN_DURATION_MS = 30_000L
         private const val UNKNOWN_ARTIST_TAG = "<unknown>"
 
-        /** Types MIME reconnus : MP3, WAV, FLAC, M4A, AAC, OGG, OPUS, AMR, WMA et MIDI. */
+        /** Types MIME reconnus : MP3, WAV, FLAC, M4A/ALAC, AAC, OGG, OPUS, AMR, WMA, MIDI, AIFF, AC-3, DTS, APE, WavPack et MKA. */
         private val SUPPORTED_MIME_TYPES = listOf(
             "audio/mpeg", "audio/mp3",
             "audio/x-wav", "audio/wav", "audio/vnd.wave",
@@ -1957,7 +1968,13 @@ class SongRepository(context: Context) {
             "audio/opus",
             "audio/amr", "audio/3gpp", "audio/amr-wb",
             "audio/x-ms-wma",
-            "audio/midi", "audio/x-midi", "audio/mid", "audio/sp-midi"
+            "audio/midi", "audio/x-midi", "audio/mid", "audio/sp-midi",
+            // v1.5 : formats avancés (AIFF, ALAC, AC-3 / E-AC-3, DTS, APE, WavPack, Matroska / WebM).
+            "audio/aiff", "audio/x-aiff", "audio/alac",
+            "audio/ac3", "audio/eac3", "audio/vnd.dolby.dd-raw",
+            "audio/vnd.dts", "audio/vnd.dts.hd",
+            "audio/x-ape", "audio/ape", "audio/x-wavpack",
+            "audio/x-matroska", "audio/webm"
         )
 
         private val EXCLUDED_FOLDER_KEYWORDS = listOf(
@@ -2383,16 +2400,17 @@ class PlayerController(context: Context) {
         controller?.seekToPreviousMediaItem()
     }
 
-    /** Avance la lecture de [stepMs] dans le morceau courant (utilisé par l'appui long "Suivant"). */
-    fun seekForward(stepMs: Long) {
-        val mediaController = controller ?: return
-        mediaController.seekTo((mediaController.currentPosition + stepMs).coerceAtLeast(0L))
+    /**
+     * Avance la lecture d'un pas (5 s) via COMMAND_SEEK_FORWARD (appui long « Suivant » du mini-lecteur et du grand lecteur).
+     * Le pas est celui d'ExoPlayer (`setSeekForwardIncrementMs(5000)`), partagé avec l'écran de verrouillage et la notification.
+     */
+    fun seekForward(@Suppress("UNUSED_PARAMETER") stepMs: Long = SEEK_STEP_MS) {
+        controller?.seekForward()
     }
 
-    /** Recule la lecture de [stepMs] dans le morceau courant (utilisé par l'appui long "Précédent"). */
-    fun seekBackward(stepMs: Long) {
-        val mediaController = controller ?: return
-        mediaController.seekTo((mediaController.currentPosition - stepMs).coerceAtLeast(0L))
+    /** Recule la lecture d'un pas (5 s) via COMMAND_SEEK_BACK (appui long « Précédent »). */
+    fun seekBackward(@Suppress("UNUSED_PARAMETER") stepMs: Long = SEEK_STEP_MS) {
+        controller?.seekBack()
     }
 
     /** À appeler périodiquement (ex. toutes les 500 ms) pour rafraîchir la barre de progression. */
@@ -2405,6 +2423,11 @@ class PlayerController(context: Context) {
             )
         }
     }
+
+    companion object {
+        /** Pas de saut unifié (avance / retour), en millisecondes. */
+        const val SEEK_STEP_MS = 5_000L
+    }
 }
 EOF
 
@@ -2415,15 +2438,27 @@ package com.elg.music.playback
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.view.KeyEvent
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.elg.music.data.local.PlaybackStateStore
+import com.elg.music.data.local.SavedPlayback
+import com.elg.music.data.repository.SongRepository
 import com.elg.music.ui.main.MainActivity
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Service de lecture en arrière-plan (Media3).
@@ -2444,6 +2479,12 @@ import com.google.common.util.concurrent.ListenableFuture
  * [AudioEffectsController] applique en direct les réglages de l'écran « Audio & effets » :
  * vitesse, pitch, égaliseur, bass boost et virtualizer.
  *
+ * v1.5 : le pas de recherche ExoPlayer est fixé à 5 s (avance / retour) ; toutes les commandes COMMAND_SEEK_BACK et
+ * COMMAND_SEEK_FORWARD (écran de verrouillage, notification, grand lecteur, mini-lecteur) l'utilisent donc.
+ * La file d'attente, le morceau et la position sont sauvegardés dans le DataStore ([PlaybackStateStore]) et rechargés
+ * en pause au démarrage du service. Les boutons physiques (écouteurs filaires, Bluetooth, geste TalkBack à deux doigts)
+ * relancent la lecture même si l'application est fermée : le `MediaButtonReceiver` du manifeste démarre ce service.
+ *
  * [SleepTimerController] (minuteur de sommeil avec fondu sonore) et [AbLoopController] (boucle A-B)
  * vivent aussi dans ce service : ils agissent sur la lecture même quand l'application est fermée.
  */
@@ -2456,6 +2497,13 @@ class MusicPlaybackService : MediaSessionService() {
     private var sleepTimer: SleepTimerController? = null
     private var abLoop: AbLoopController? = null
 
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private lateinit var playbackStore: PlaybackStateStore
+    private var restoreJob: Job? = null
+    private var restoreFinished = false
+    private var playWhenRestored = false
+    private var periodicSaveJob: Job? = null
+
     override fun onCreate() {
         super.onCreate()
 
@@ -2467,7 +2515,11 @@ class MusicPlaybackService : MediaSessionService() {
         val player = ExoPlayer.Builder(this)
             .setAudioAttributes(audioAttributes, /* handleAudioFocus= */ true)
             .setHandleAudioBecomingNoisy(true)
+            // Saut unifié de 5 s : pas de recherche commun à toutes les commandes COMMAND_SEEK_BACK / COMMAND_SEEK_FORWARD.
+            .setSeekBackIncrementMs(SEEK_INCREMENT_MS)
+            .setSeekForwardIncrementMs(SEEK_INCREMENT_MS)
             .build()
+        playbackStore = PlaybackStateStore(this)
 
         val sessionActivityPendingIntent = PendingIntent.getActivity(
             this,
@@ -2511,6 +2563,104 @@ class MusicPlaybackService : MediaSessionService() {
             .setBitmapLoader(bitmapLoader)
             .setCallback(sessionCallback)
             .build()
+
+        attachPersistence(player)
+        restoreLastPlayback(player)
+    }
+
+    // ===================== Mini-lecteur persistant =====================
+
+    /** Photo de l'état de lecture à sauvegarder, ou null si la file d'attente est vide. */
+    private fun snapshot(player: Player): SavedPlayback? {
+        val count = player.mediaItemCount
+        if (count == 0) return null
+        val ids = (0 until count).mapNotNull { player.getMediaItemAt(it).mediaId.toLongOrNull() }
+        if (ids.size != count) return null
+        val index = player.currentMediaItemIndex.coerceIn(0, count - 1)
+        return SavedPlayback(ids[index], player.currentPosition.coerceAtLeast(0L), ids, index)
+    }
+
+    private fun saveNow(player: Player) {
+        val state = snapshot(player) ?: return
+        serviceScope.launch(Dispatchers.IO) { runCatching { playbackStore.save(state) } }
+    }
+
+    private fun attachPersistence(player: Player) {
+        player.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = saveNow(player)
+
+            override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+                if (restoreFinished) saveNow(player)
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                saveNow(player)
+                periodicSaveJob?.cancel()
+                if (isPlaying) {
+                    periodicSaveJob = serviceScope.launch {
+                        while (true) {
+                            delay(SAVE_INTERVAL_MS)
+                            saveNow(player)
+                        }
+                    }
+                }
+            }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int
+            ) {
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) saveNow(player)
+            }
+        })
+    }
+
+    /** Recharge la dernière file d'attente en pause (si l'utilisateur n'a rien lancé entre-temps). */
+    private fun restoreLastPlayback(player: Player) {
+        restoreJob = serviceScope.launch {
+            try {
+                val saved = playbackStore.load()
+                if (saved != null && player.mediaItemCount == 0) {
+                    val library = SongRepository(this@MusicPlaybackService).loadLibrary().associateBy { it.id }
+                    val songs = saved.queueIds.mapNotNull { library[it] }
+                    if (songs.isNotEmpty() && player.mediaItemCount == 0) {
+                        val items = MidiSupport.replaceMidiWithSilence(
+                            this@MusicPlaybackService,
+                            songs.map(MediaItemFactory::fromSong)
+                        )
+                        val foundIndex = songs.indexOfFirst { it.id == saved.lastSongId }
+                        val startIndex = foundIndex.coerceAtLeast(0)
+                        val position = if (foundIndex >= 0) saved.lastPositionMs else 0L
+                        player.setMediaItems(items, startIndex, position)
+                        player.playWhenReady = false
+                        player.prepare()
+                    }
+                }
+            } catch (error: Exception) {
+                // Permission audio absente ou bibliothèque illisible : le mini-lecteur restera masqué jusqu'à la prochaine lecture.
+            } finally {
+                restoreFinished = true
+                if (playWhenRestored && player.mediaItemCount > 0) player.play()
+                playWhenRestored = false
+            }
+        }
+    }
+
+    /**
+     * Boutons physiques (écouteurs filaires, Bluetooth, geste TalkBack à deux doigts = KEYCODE_MEDIA_PLAY_PAUSE) reçus
+     * alors que la file d'attente n'est pas encore rechargée : la lecture démarre dès que la restauration est terminée.
+     */
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == Intent.ACTION_MEDIA_BUTTON) {
+            val key = intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+            val isPlayKey = key != null && key.action == KeyEvent.ACTION_DOWN && key.keyCode in PLAY_KEYS
+            val player = mediaSession?.player
+            if (isPlayKey && player != null && !restoreFinished && player.mediaItemCount == 0) {
+                playWhenRestored = true
+            }
+        }
+        return super.onStartCommand(intent, flags, startId)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
@@ -2520,12 +2670,22 @@ class MusicPlaybackService : MediaSessionService() {
     /** Arrête le service si rien ne joue lorsque l'utilisateur retire l'app des tâches récentes. */
     override fun onTaskRemoved(rootIntent: Intent?) {
         val session = mediaSession ?: return
+        saveNow(session.player)
         if (!session.player.playWhenReady || session.player.mediaItemCount == 0) {
             stopSelf()
         }
     }
 
     override fun onDestroy() {
+        mediaSession?.player?.let { player ->
+            // Dernière sauvegarde, dans une portée indépendante pour qu'elle survive à l'arrêt du service.
+            snapshot(player)?.let { state ->
+                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { runCatching { playbackStore.save(state) } }
+            }
+        }
+        periodicSaveJob?.cancel()
+        restoreJob?.cancel()
+        serviceScope.cancel()
         abLoop?.release()
         abLoop = null
         sleepTimer?.release()
@@ -2542,6 +2702,16 @@ class MusicPlaybackService : MediaSessionService() {
         artworkLoader?.release()
         artworkLoader = null
         super.onDestroy()
+    }
+
+    private companion object {
+        const val SEEK_INCREMENT_MS = 5_000L
+        const val SAVE_INTERVAL_MS = 5_000L
+        val PLAY_KEYS = setOf(
+            KeyEvent.KEYCODE_MEDIA_PLAY,
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            KeyEvent.KEYCODE_HEADSETHOOK
+        )
     }
 }
 EOF
@@ -4606,6 +4776,7 @@ import android.net.Uri
 import android.util.Size
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.BitmapLoader
+import com.elg.music.data.repository.CoverCache
 import com.elg.music.R
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.ListeningExecutorService
@@ -4654,7 +4825,9 @@ class ArtworkBitmapLoader(context: Context) : BitmapLoader {
         lastResult?.let { (cachedUri, cachedBitmap) ->
             if (cachedUri == uri) return cachedBitmap
         }
-        val bitmap = try {
+        val cached = CoverCache.mediaIdOf(uri)?.let { CoverCache.read(appContext, it) }
+            ?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+        val bitmap = cached ?: try {
             appContext.contentResolver.loadThumbnail(uri, Size(ARTWORK_SIZE_PX, ARTWORK_SIZE_PX), null)
         } catch (noArtwork: Exception) {
             // Aucune pochette pour ce fichier (ou lecture impossible) : pochette par défaut.
@@ -5647,9 +5820,11 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import android.util.LruCache
+import android.graphics.BitmapFactory
 import android.util.Size
 import android.widget.ImageView
 import androidx.annotation.DrawableRes
+import com.elg.music.data.repository.CoverCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -5667,7 +5842,8 @@ import kotlinx.coroutines.withContext
  */
 class ArtworkLoader(context: Context, private val scope: CoroutineScope) {
 
-    private val resolver = context.applicationContext.contentResolver
+    private val appContext = context.applicationContext
+    private val resolver = appContext.contentResolver
 
     private val cache = object : LruCache<String, Bitmap>(cacheSizeKb()) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
@@ -5706,12 +5882,25 @@ class ArtworkLoader(context: Context, private val scope: CoroutineScope) {
         }
     }
 
-    private fun readThumbnail(uri: Uri, sizePx: Int): Bitmap? =
-        try {
+    private fun readThumbnail(uri: Uri, sizePx: Int): Bitmap? {
+        // Pochette du repli hybride (formats sans image interne) : conservée dans cacheDir/covers/.
+        CoverCache.mediaIdOf(uri)?.let { id ->
+            CoverCache.read(appContext, id)?.let { bytes ->
+                val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                if (decoded != null) {
+                    // Recadrage carré centré, comme la vignette du système.
+                    val side = minOf(decoded.width, decoded.height)
+                    val square = Bitmap.createBitmap(decoded, (decoded.width - side) / 2, (decoded.height - side) / 2, side, side)
+                    return Bitmap.createScaledBitmap(square, sizePx, sizePx, true)
+                }
+            }
+        }
+        return try {
             resolver.loadThumbnail(uri, Size(sizePx, sizePx), null)
         } catch (noArtwork: Exception) {
             null
         }
+    }
 
     private fun cacheSizeKb(): Int = (Runtime.getRuntime().maxMemory() / 1024L / 8L).toInt()
 }
@@ -7067,9 +7256,24 @@ class SettingsRepository(context: Context) {
         }
     }
 
-    /** Revient aux valeurs d'une installation neuve (réinitialisation usine). */
+    /** Vrai si l'utilisateur a déjà accepté l'avertissement légal de l'éditeur de tags (v1.5). */
+    suspend fun isTagEditorDisclaimerAccepted(): Boolean =
+        store.data
+            .catch { error -> if (error is IOException) emit(emptyPreferences()) else throw error }
+            .first()[KEY_TAG_DISCLAIMER_ACCEPTED] ?: false
+
+    /** Mémorise définitivement le consentement : la boîte de dialogue ne sera plus affichée. */
+    suspend fun setTagEditorDisclaimerAccepted(accepted: Boolean = true) {
+        store.edit { it[KEY_TAG_DISCLAIMER_ACCEPTED] = accepted }
+    }
+
+    /** Revient aux valeurs d'une installation neuve (réinitialisation usine) ; le consentement légal est conservé. */
     suspend fun resetAll() {
-        store.edit { it.clear() }
+        store.edit { prefs ->
+            val consent = prefs[KEY_TAG_DISCLAIMER_ACCEPTED]
+            prefs.clear()
+            if (consent != null) prefs[KEY_TAG_DISCLAIMER_ACCEPTED] = consent
+        }
     }
 
     private fun Preferences.toSettings(): AppSettings {
@@ -7113,6 +7317,7 @@ class SettingsRepository(context: Context) {
         val KEY_SLEEP_TIMER_DEFAULT = intPreferencesKey("sleep_timer_default")
         val KEY_FADE_OUT_ENABLED = booleanPreferencesKey("fade_out_enabled")
         val KEY_DRIVE_MODE_THEME = stringPreferencesKey("drive_mode_theme")
+        val KEY_TAG_DISCLAIMER_ACCEPTED = booleanPreferencesKey("tag_editor_disclaimer_accepted")
     }
 }
 EOF
@@ -8234,6 +8439,8 @@ cat << 'EOF' > app/src/main/java/com/elg/music/data/local/VaultPinStore.kt
 package com.elg.music.data.local
 
 import android.content.Context
+import android.os.SystemClock
+import android.provider.Settings
 import android.util.Base64
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -8257,7 +8464,7 @@ sealed interface PinCheckResult {
     /** Code correct. */
     data object Success : PinCheckResult
 
-    /** Code incorrect ; [attemptsLeft] essais restants avant le blocage temporaire. */
+    /** Code incorrect ; [attemptsLeft] essais restants avant le premier blocage temporaire. */
     data class Wrong(val attemptsLeft: Int) : PinCheckResult
 
     /** Trop d'essais : saisie bloquée encore [remainingSeconds] secondes. */
@@ -8270,16 +8477,24 @@ sealed interface PinCheckResult {
  * Le code n'est jamais enregistré en clair : seul son condensat SHA-256 salé l'est. Un sel aléatoire
  * de 16 octets est tiré à chaque création du code, et le condensat est recalculé en
  * [HASH_ROUNDS] tours pour ralentir toute attaque par essais successifs. La comparaison se fait en
- * temps constant. Après [MAX_ATTEMPTS] erreurs de suite, la saisie est bloquée [LOCK_DURATION_MS]
- * millisecondes ; le compteur et l'heure de fin du blocage sont conservés, donc fermer l'application
- * ne remet pas les essais à zéro.
+ * temps constant.
+ *
+ * Anti-force brute (v1.5) : après [MAX_ATTEMPTS] erreurs de suite, la saisie est bloquée 30 secondes (niveau 1).
+ * Ensuite, chaque nouvel échec après un déblocage fait monter d'un niveau la pénalité (backoff progressif) :
+ * 30 s, 1 min, 2 min, 3 min, 5 min, 10 min, 15 min, 30 min, puis 1 heure au niveau maximal.
+ * Le niveau (`lockout_level`) et la fin du blocage (`lockout_end_timestamp`) sont conservés dans le DataStore :
+ * fermer l'application, la retirer du multitâche ou redémarrer le téléphone ne raccourcit pas le délai.
+ * Pendant le même démarrage du téléphone, le délai est mesuré sur l'horloge monotone (`elapsedRealtime`), qui ne
+ * se règle pas depuis les paramètres ; après un redémarrage, c'est l'horodatage enregistré qui fait foi.
+ * Un code correct remet le compteur d'échecs et le niveau à zéro.
  *
  * Ce stockage est indépendant de [SettingsRepository] : l'export JSON des réglages et la
  * réinitialisation de l'audio ne touchent jamais au code PIN.
  */
 class VaultPinStore(context: Context) {
 
-    private val store = context.applicationContext.elgVaultDataStore
+    private val appContext = context.applicationContext
+    private val store = appContext.elgVaultDataStore
 
     private suspend fun readPrefs(): Preferences =
         store.data
@@ -8292,7 +8507,7 @@ class VaultPinStore(context: Context) {
         return prefs[KEY_PIN_HASH] != null && prefs[KEY_PIN_SALT] != null
     }
 
-    /** Enregistre un nouveau code (remplace l'ancien) et remet à zéro les essais ratés. */
+    /** Enregistre un nouveau code (remplace l'ancien) et remet à zéro les essais ratés et la pénalité. */
     suspend fun setPin(pin: String) {
         require(isValidFormat(pin)) { "Le code PIN doit comporter 4 ou 6 chiffres." }
         val salt = ByteArray(SALT_BYTES).also { SecureRandom().nextBytes(it) }
@@ -8301,20 +8516,28 @@ class VaultPinStore(context: Context) {
             prefs[KEY_PIN_SALT] = Base64.encodeToString(salt, Base64.NO_WRAP)
             prefs[KEY_PIN_HASH] = Base64.encodeToString(hash, Base64.NO_WRAP)
             prefs[KEY_FAILED_ATTEMPTS] = 0
-            prefs[KEY_LOCKED_UNTIL] = 0L
+            prefs[KEY_LOCKOUT_LEVEL] = 0
+            prefs[KEY_LOCKOUT_END] = 0L
+            prefs[KEY_LOCKOUT_END_ELAPSED] = 0L
+            prefs[KEY_LOCKOUT_BOOT] = currentBootCount()
         }
     }
 
-    /** Vérifie un code saisi, en tenant compte du blocage temporaire et du compteur d'essais. */
+    /** Secondes restantes avant la fin du blocage en cours (0 si la saisie est possible). */
+    suspend fun remainingLockSeconds(): Int = secondsFor(remainingLockMillis(readPrefs()))
+
+    /** Niveau de pénalité actuel (0 = aucun blocage imposé jusqu'ici, 9 = niveau maximal). */
+    suspend fun lockoutLevel(): Int = readPrefs()[KEY_LOCKOUT_LEVEL] ?: 0
+
+    /** Vérifie un code saisi, en tenant compte du blocage temporaire, du compteur d'essais et du niveau de pénalité. */
     suspend fun verify(pin: String): PinCheckResult {
         val prefs = readPrefs()
         val saltText = prefs[KEY_PIN_SALT]
         val hashText = prefs[KEY_PIN_HASH]
         if (saltText == null || hashText == null) return PinCheckResult.Wrong(0)
 
-        val now = System.currentTimeMillis()
-        val lockedUntil = prefs[KEY_LOCKED_UNTIL] ?: 0L
-        if (lockedUntil > now) return PinCheckResult.Locked(secondsFor(lockedUntil - now))
+        val remaining = remainingLockMillis(prefs)
+        if (remaining > 0L) return PinCheckResult.Locked(secondsFor(remaining))
 
         val salt = runCatching { Base64.decode(saltText, Base64.NO_WRAP) }.getOrNull()
         val expected = runCatching { Base64.decode(hashText, Base64.NO_WRAP) }.getOrNull()
@@ -8323,23 +8546,50 @@ class VaultPinStore(context: Context) {
         if (MessageDigest.isEqual(expected, hashPin(pin, salt))) {
             store.edit { editable ->
                 editable[KEY_FAILED_ATTEMPTS] = 0
-                editable[KEY_LOCKED_UNTIL] = 0L
+                editable[KEY_LOCKOUT_LEVEL] = 0
+                editable[KEY_LOCKOUT_END] = 0L
+                editable[KEY_LOCKOUT_END_ELAPSED] = 0L
             }
             return PinCheckResult.Success
         }
 
+        val level = prefs[KEY_LOCKOUT_LEVEL] ?: 0
         val failed = (prefs[KEY_FAILED_ATTEMPTS] ?: 0) + 1
-        if (failed >= MAX_ATTEMPTS) {
-            val until = now + LOCK_DURATION_MS
-            store.edit { editable ->
-                editable[KEY_FAILED_ATTEMPTS] = 0
-                editable[KEY_LOCKED_UNTIL] = until
-            }
-            return PinCheckResult.Locked(secondsFor(LOCK_DURATION_MS))
+        // Niveau 0 : cinq erreurs sont tolérées. Dès qu'un blocage a eu lieu, un seul échec suffit à monter d'un niveau.
+        if (level == 0 && failed < MAX_ATTEMPTS) {
+            store.edit { editable -> editable[KEY_FAILED_ATTEMPTS] = failed }
+            return PinCheckResult.Wrong(MAX_ATTEMPTS - failed)
         }
-        store.edit { editable -> editable[KEY_FAILED_ATTEMPTS] = failed }
-        return PinCheckResult.Wrong(MAX_ATTEMPTS - failed)
+        val nextLevel = (level + 1).coerceAtMost(LOCK_DURATIONS_S.size)
+        val durationMs = LOCK_DURATIONS_S[nextLevel - 1] * 1000L
+        val endWall = System.currentTimeMillis() + durationMs
+        val endElapsed = SystemClock.elapsedRealtime() + durationMs
+        store.edit { editable ->
+            editable[KEY_FAILED_ATTEMPTS] = 0
+            editable[KEY_LOCKOUT_LEVEL] = nextLevel
+            editable[KEY_LOCKOUT_END] = endWall
+            editable[KEY_LOCKOUT_END_ELAPSED] = endElapsed
+            editable[KEY_LOCKOUT_BOOT] = currentBootCount()
+        }
+        return PinCheckResult.Locked(secondsFor(durationMs))
     }
+
+    /** Millisecondes de blocage restantes, sur l'horloge monotone si le téléphone n'a pas redémarré depuis. */
+    private fun remainingLockMillis(prefs: Preferences): Long {
+        val endWall = prefs[KEY_LOCKOUT_END] ?: 0L
+        if (endWall <= 0L) return 0L
+        val sameBoot = (prefs[KEY_LOCKOUT_BOOT] ?: -1) == currentBootCount() && currentBootCount() >= 0
+        val endElapsed = prefs[KEY_LOCKOUT_END_ELAPSED] ?: 0L
+        val fromWall = (endWall - System.currentTimeMillis()).coerceAtLeast(0L)
+        if (sameBoot && endElapsed > 0L) {
+            return (endElapsed - SystemClock.elapsedRealtime()).coerceIn(0L, LOCK_DURATIONS_S.last() * 1000L)
+        }
+        // Après redémarrage : horodatage enregistré (borné pour qu'un réglage d'horloge ne bloque pas indéfiniment).
+        return fromWall.coerceAtMost(LOCK_DURATIONS_S.last() * 1000L)
+    }
+
+    private fun currentBootCount(): Int =
+        runCatching { Settings.Global.getInt(appContext.contentResolver, Settings.Global.BOOT_COUNT, -1) }.getOrDefault(-1)
 
     /** Supprime le code PIN et le compteur d'essais (réinitialisation usine, étape ultérieure). */
     suspend fun clear() {
@@ -8364,12 +8614,17 @@ class VaultPinStore(context: Context) {
         private const val SALT_BYTES = 16
         private const val HASH_ROUNDS = 10_000
         private const val MAX_ATTEMPTS = 5
-        private const val LOCK_DURATION_MS = 30_000L
+
+        /** Durées de blocage par niveau, en secondes : 30 s, 1, 2, 3, 5, 10, 15, 30 minutes, puis 1 heure. */
+        val LOCK_DURATIONS_S = longArrayOf(30L, 60L, 120L, 180L, 300L, 600L, 900L, 1800L, 3600L)
 
         private val KEY_PIN_SALT = stringPreferencesKey("pin_salt")
         private val KEY_PIN_HASH = stringPreferencesKey("pin_hash")
         private val KEY_FAILED_ATTEMPTS = intPreferencesKey("failed_attempts")
-        private val KEY_LOCKED_UNTIL = longPreferencesKey("locked_until")
+        private val KEY_LOCKOUT_LEVEL = intPreferencesKey("lockout_level")
+        private val KEY_LOCKOUT_END = longPreferencesKey("lockout_end_timestamp")
+        private val KEY_LOCKOUT_END_ELAPSED = longPreferencesKey("lockout_end_elapsed")
+        private val KEY_LOCKOUT_BOOT = intPreferencesKey("lockout_boot_count")
 
         /** Un code valide comporte exactement 4 ou 6 chiffres. */
         fun isValidFormat(pin: String): Boolean =
@@ -8643,10 +8898,12 @@ mkdir -p app/src/main/java/com/elg/music/ui/vault
 cat << 'EOF' > app/src/main/java/com/elg/music/ui/vault/PinDialogs.kt
 package com.elg.music.ui.vault
 
+import android.content.Context
 import android.content.DialogInterface
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -8657,7 +8914,10 @@ import com.elg.music.data.local.PinCheckResult
 import com.elg.music.data.local.VaultPinStore
 import com.elg.music.databinding.DialogPinBinding
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 /**
  * Boîtes de dialogue du code PIN du coffre-fort. Les deux fonctions renvoient le dialogue affiché,
@@ -8733,8 +8993,10 @@ object PinDialogs {
     }
 
     /**
-     * Déverrouillage : saisie du code existant. Après trop d'erreurs, la saisie est bloquée un court
-     * moment (voir [VaultPinStore]).
+     * Déverrouillage : saisie du code existant. Après 5 erreurs de suite, l'interface est verrouillée : le clavier
+     * se ferme, le champ et le bouton de validation sont désactivés, et un décompte « Réessayez dans mm:ss » défile
+     * seconde par seconde. La pénalité grandit à chaque nouvel échec (voir [VaultPinStore]) et survit à la fermeture
+     * de l'application : si le dialogue est rouvert pendant un blocage, le décompte reprend là où il en était.
      *
      * @param onUnlocked appelé quand le code est correct.
      * @param onCancel appelé si l'utilisateur annule.
@@ -8758,9 +9020,48 @@ object PinDialogs {
             .create()
         dialog.setCanceledOnTouchOutside(false)
 
+        var countdownJob: Job? = null
+        dialog.setOnDismissListener { countdownJob?.cancel() }
+
         dialog.setOnShowListener {
             val confirmButton = dialog.getButton(DialogInterface.BUTTON_POSITIVE)
+
+            fun hideKeyboard() {
+                val manager = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                manager.hideSoftInputFromWindow(binding.editPin.windowToken, 0)
+                binding.editPin.clearFocus()
+            }
+
+            fun setLocked(locked: Boolean) {
+                binding.editPin.isEnabled = !locked
+                binding.inputLayoutPin.isEnabled = !locked
+                confirmButton.isEnabled = !locked
+            }
+
+            /** Verrouille l'interface et affiche le décompte jusqu'à la fin du blocage. */
+            fun startLockCountdown(initialSeconds: Int) {
+                countdownJob?.cancel()
+                binding.editPin.text?.clear()
+                setLocked(true)
+                hideKeyboard()
+                countdownJob = activity.lifecycleScope.launch {
+                    var left = initialSeconds
+                    while (left > 0) {
+                        binding.inputLayoutPin.error =
+                            activity.getString(R.string.vault_pin_error_locked_countdown, formatCountdown(left))
+                        delay(1000L)
+                        // Relecture du temps réellement restant : le décompte reste exact même si l'écran a été mis en veille.
+                        left = store.remainingLockSeconds()
+                    }
+                    binding.inputLayoutPin.error = null
+                    setLocked(false)
+                    binding.editPin.requestFocus()
+                    dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+                }
+            }
+
             fun submit() {
+                if (!binding.editPin.isEnabled) return
                 val pin = binding.editPin.text?.toString().orEmpty()
                 if (!VaultPinStore.isValidFormat(pin)) {
                     binding.inputLayoutPin.error = activity.getString(R.string.vault_pin_error_format)
@@ -8779,17 +9080,14 @@ object PinDialogs {
                             binding.inputLayoutPin.error =
                                 activity.getString(R.string.vault_pin_error_wrong, result.attemptsLeft)
                         }
-                        is PinCheckResult.Locked -> {
-                            confirmButton.isEnabled = true
-                            binding.editPin.text?.clear()
-                            binding.inputLayoutPin.error =
-                                activity.getString(R.string.vault_pin_error_locked, result.remainingSeconds)
-                        }
+                        is PinCheckResult.Locked -> startLockCountdown(result.remainingSeconds)
                     }
                 }
             }
             confirmButton.setOnClickListener { submit() }
-            binding.editPin.doOnTextChanged { _, _, _, _ -> binding.inputLayoutPin.error = null }
+            binding.editPin.doOnTextChanged { _, _, _, _ ->
+                if (binding.editPin.isEnabled) binding.inputLayoutPin.error = null
+            }
             binding.editPin.setOnEditorActionListener { _, actionId, _ ->
                 if (actionId == EditorInfo.IME_ACTION_DONE) {
                     submit()
@@ -8798,12 +9096,25 @@ object PinDialogs {
                     false
                 }
             }
-            binding.editPin.requestFocus()
-            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+
+            // Un blocage encore actif (application rouverte, téléphone redémarré) est repris immédiatement.
+            activity.lifecycleScope.launch {
+                val remaining = store.remainingLockSeconds()
+                if (remaining > 0) {
+                    startLockCountdown(remaining)
+                } else {
+                    binding.editPin.requestFocus()
+                    dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+                }
+            }
         }
         dialog.show()
         return dialog
     }
+
+    /** « 00:30 », « 05:00 », « 60:00 » : minutes et secondes. */
+    private fun formatCountdown(totalSeconds: Int): String =
+        String.format(Locale.US, "%02d:%02d", totalSeconds / 60, totalSeconds % 60)
 }
 EOF
 
@@ -11063,6 +11374,7 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import android.util.Size
 import com.elg.music.data.local.ElgDatabase
@@ -11105,13 +11417,15 @@ class TagBundle(
 class PreparedCover(val jpeg: ByteArray, val preview: Bitmap)
 
 /**
- * Éditeur de tags (étape 6 de la v1.4) : lecture, écriture et persistance des métadonnées.
+ * Éditeur de tags (étape 6, moteur d'écriture physique de la v1.5) : lecture, écriture et persistance des métadonnées.
  *
- *  - MP3 : le tag ID3v2.4 est réécrit dans le fichier ([Id3TagCodec]) après autorisation du système
- *    (`MediaStore.createWriteRequest`), puis le MediaStore est mis à jour.
- *  - Autres formats (FLAC, M4A, OGG…) : Android ne permet pas d'écrire leurs tags ; les champs sont
- *    mis à jour dans le MediaStore (titre, artiste, album, genre, année, piste, compositeur) et
- *    conservés en entier dans la base Room, qui prime à l'affichage de la bibliothèque.
+ *  - Formats gérés (MP3, M4A/AAC/ALAC, FLAC, OGG/Opus, WAV, AIFF, WMA, APE, WavPack, MKV/WebM) : le fichier est
+ *    reconstruit dans le cache (tags + pochette) par [AudioTagWriter] / [Id3TagCodec], puis réécrit physiquement via un
+ *    descripteur de fichier système (`openFileDescriptor(uri, "rw")`) après autorisation
+ *    (`MediaStore.createWriteRequest`). L'original est conservé dans le cache pendant l'écriture et restauré en cas d'échec.
+ *  - Formats sans structure d'image interne (MIDI, AMR, AC-3, DTS bruts), ou fichier que l'écrivain ne sait pas modifier
+ *    sans risque : repli hybride. Titre, artiste, etc. sont enregistrés dans la base Room et le MediaStore, la pochette dans
+ *    `cacheDir/covers/` ([CoverCache]) ; le fichier d'origine n'est jamais touché.
  *  - Dans tous les cas, une ligne Room garde la dernière saisie.
  */
 class TagRepository(context: Context) {
@@ -11166,11 +11480,18 @@ class TagRepository(context: Context) {
             info.displayName.endsWith(".mp3", ignoreCase = true)
     }
 
+    /** Conteneur déduit de l'extension et du type MIME (la signature binaire confirme au moment de l'écriture). */
+    fun containerOf(info: AudioFileInfo): AudioContainer = AudioTagWriter.classify(info.displayName, info.mimeType)
+
+    /** Vrai si ce format peut être réécrit physiquement (sinon : repli Room + cache de pochettes). */
+    fun isFileWritable(info: AudioFileInfo): Boolean = containerOf(info) != AudioContainer.UNSUPPORTED
+
     suspend fun readTags(info: AudioFileInfo): TagBundle = withContext(Dispatchers.IO) {
         val mp3 = isMp3(info)
         var tags = TagData()
         var bitrate: Int? = null
         var sampleRate: Int? = null
+        var embeddedPicture: ByteArray? = null
 
         val retriever = MediaMetadataRetriever()
         try {
@@ -11191,6 +11512,7 @@ class TagRepository(context: Context) {
             )
             bitrate = meta(MediaMetadataRetriever.METADATA_KEY_BITRATE).toIntOrNull()?.div(1000)
             sampleRate = meta(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE).toIntOrNull()
+            if (!mp3) embeddedPicture = retriever.embeddedPicture
         } catch (error: Exception) {
             // Métadonnées illisibles : l'éditeur s'ouvre avec des champs vides.
         } finally {
@@ -11212,10 +11534,16 @@ class TagRepository(context: Context) {
             }
         } else {
             try {
-                dao.get(info.id)?.let { tags = it.toTagData() }
+                val entry = dao.get(info.id)
+                if (entry != null) {
+                    // Fichier réécrit : le fichier fait foi, la base complète les champs que le système ne relit pas
+                    // (paroles, copyright…). Repli hybride : la dernière saisie de la base prime.
+                    tags = if (entry.fileWritten) entry.toTagData().overlay(tags) else tags.overlay(entry.toTagData())
+                }
             } catch (error: Exception) {
                 // Base indisponible : valeurs du fichier.
             }
+            cover = CoverCache.read(appContext, info.id) ?: embeddedPicture
         }
 
         if (tags.title.isBlank()) {
@@ -11306,13 +11634,11 @@ class TagRepository(context: Context) {
         coverJpeg: ByteArray?,
         allowFileWrite: Boolean
     ): SaveOutcome = withContext(NonCancellable + Dispatchers.IO) {
-        val mp3 = isMp3(info)
         var rewritten = false
         try {
             if (allowFileWrite) {
-                if (mp3) {
-                    rewriteMp3(info.uri, tags, coverJpeg)
-                    rewritten = true
+                rewritten = rewriteFile(info, tags, coverJpeg)
+                if (rewritten) {
                     runCatching { updateMediaStore(info, tags) }
                     refreshScan(info)
                 } else {
@@ -11331,6 +11657,13 @@ class TagRepository(context: Context) {
             return@withContext SaveOutcome.Failed(error.message)
         }
 
+        // Pochette : intégrée au fichier si possible, sinon conservée dans le cache sécurisé d'ELG Music.
+        if (coverJpeg != null) {
+            runCatching {
+                if (rewritten) CoverCache.delete(appContext, info.id) else CoverCache.save(appContext, info.id, coverJpeg)
+            }
+        }
+
         try {
             dao.upsert(tags.toEntity(info.id, rewritten))
         } catch (error: Exception) {
@@ -11341,48 +11674,105 @@ class TagRepository(context: Context) {
     }
 
     /**
-     * Réécrit le MP3 : nouveau tag + données audio d'origine, d'abord dans un fichier temporaire,
-     * puis recopié sur le fichier. L'ouverture en écriture échoue avant toute troncature si le
-     * système n'a pas accordé l'accès : le fichier d'origine reste alors intact.
+     * Réécriture physique du fichier audio. Renvoie false (fichier intact) quand le format n'est pas pris en charge :
+     * l'appelant bascule alors sur le repli Room + cache.
+     *
+     * Le fichier est d'abord copié dans le cache, le nouveau fichier y est construit, puis il est recopié sur
+     * l'original par un descripteur système. En cas d'échec en cours de route, l'original est restauré.
      */
-    private fun rewriteMp3(uri: Uri, tags: TagData, coverJpeg: ByteArray?) {
-        val temp = File(appContext.cacheDir, "tag_edit_${System.nanoTime()}.tmp")
+    private fun rewriteFile(info: AudioFileInfo, tags: TagData, coverJpeg: ByteArray?): Boolean {
+        val declared = containerOf(info)
+        if (declared == AudioContainer.UNSUPPORTED) return false
+
+        val stamp = System.nanoTime()
+        val original = File(appContext.cacheDir, "tag_src_$stamp.tmp")
+        val rebuilt = File(appContext.cacheDir, "tag_new_$stamp.tmp")
         try {
-            val input = resolver.openInputStream(uri) ?: throw IOException("Fichier illisible")
-            input.use { raw ->
-                val buffered = BufferedInputStream(raw, BUFFER_BYTES)
-                val old = Id3TagCodec.readTag(buffered)
-                val newTag = Id3TagCodec.buildTag(old?.frames.orEmpty(), tags, coverJpeg)
-                FileOutputStream(temp).use { out ->
-                    out.write(newTag)
-                    buffered.copyTo(out)
-                }
-                if (temp.length() - newTag.size <= 0L) throw IOException("Aucune donnée audio")
-            }
-            var attempt = 0
-            while (true) {
+            val needed = info.sizeBytes * 2 + (coverJpeg?.size ?: 0) + MIN_FREE_BYTES
+            if (appContext.cacheDir.usableSpace < needed) throw IOException("Espace de stockage insuffisant")
+
+            val input = resolver.openInputStream(info.uri) ?: throw IOException("Fichier illisible")
+            input.use { raw -> FileOutputStream(original).use { out -> raw.copyTo(out, BUFFER_BYTES) } }
+            if (original.length() <= 0L) throw IOException("Fichier vide")
+
+            val head = ByteArray(16)
+            val headLength = original.inputStream().use { it.read(head) }.coerceAtLeast(0)
+            val sniffed = AudioTagWriter.sniff(head, headLength)
+            if (sniffed == AudioContainer.UNSUPPORTED) return false
+            val container = sniffed ?: declared
+
+            if (container == AudioContainer.MP3) {
+                buildMp3(original, rebuilt, tags, coverJpeg)
+            } else {
                 try {
-                    copyBack(uri, temp)
-                    break
-                } catch (denied: SecurityException) {
-                    throw denied
-                } catch (io: IOException) {
-                    attempt++
-                    if (attempt >= 2) throw io
+                    AudioTagWriter.write(container, original, rebuilt, tags, coverJpeg)
+                } catch (cannot: Exception) {
+                    // Structure inhabituelle ou fichier abîmé : on ne risque rien, repli Room + cache.
+                    return false
                 }
             }
+            if (rebuilt.length() <= 0L) throw IOException("Fichier reconstruit vide")
+            if (rebuilt.length() < original.length() / 2 && coverJpeg == null) throw IOException("Fichier reconstruit incohérent")
+
+            writeThrough(info.uri, rebuilt, original)
+            return true
         } finally {
-            temp.delete()
+            original.delete()
+            rebuilt.delete()
         }
     }
 
-    private fun copyBack(uri: Uri, source: File) {
-        val output = try {
-            resolver.openOutputStream(uri, "wt")
+    /** MP3 : nouveau tag ID3v2.4 (pochette APIC comprise) suivi des données audio d'origine. */
+    private fun buildMp3(source: File, target: File, tags: TagData, coverJpeg: ByteArray?) {
+        source.inputStream().use { raw ->
+            val buffered = BufferedInputStream(raw, BUFFER_BYTES)
+            val old = Id3TagCodec.readTag(buffered)
+            val newTag = Id3TagCodec.buildTag(old?.frames.orEmpty(), tags, coverJpeg)
+            FileOutputStream(target).use { out ->
+                out.write(newTag)
+                buffered.copyTo(out)
+            }
+            if (target.length() - newTag.size <= 0L) throw IOException("Aucune donnée audio")
+        }
+    }
+
+    /**
+     * Écrit [newFile] sur le fichier réel par un descripteur de fichier système en lecture/écriture. L'ouverture
+     * échoue avant toute troncature si le système n'a pas accordé l'accès ([SecurityException]) : le fichier
+     * d'origine reste alors intact. Une erreur pendant la copie déclenche la restauration depuis [backup].
+     */
+    private fun writeThrough(uri: Uri, newFile: File, backup: File) {
+        var attempt = 0
+        while (true) {
+            try {
+                copyOver(uri, newFile)
+                return
+            } catch (denied: SecurityException) {
+                throw denied
+            } catch (io: IOException) {
+                attempt++
+                if (attempt >= 2) {
+                    runCatching { copyOver(uri, backup) }
+                    throw io
+                }
+            }
+        }
+    }
+
+    private fun copyOver(uri: Uri, source: File) {
+        val descriptor: ParcelFileDescriptor = try {
+            resolver.openFileDescriptor(uri, "rw")
         } catch (notAllowed: FileNotFoundException) {
             throw SecurityException(notAllowed.message)
         } ?: throw IOException("Écriture impossible")
-        output.use { out -> source.inputStream().use { it.copyTo(out) } }
+        ParcelFileDescriptor.AutoCloseOutputStream(descriptor).use { out ->
+            val channel = out.channel
+            channel.truncate(0L)
+            channel.position(0L)
+            source.inputStream().use { it.copyTo(out, BUFFER_BYTES) }
+            out.flush()
+            out.fd.sync()
+        }
     }
 
     private fun updateMediaStore(info: AudioFileInfo, tags: TagData) {
@@ -11413,7 +11803,7 @@ class TagRepository(context: Context) {
             MediaScannerConnection.scanFile(
                 appContext,
                 arrayOf(path),
-                arrayOf(info.mimeType ?: "audio/mpeg"),
+                arrayOf(info.mimeType ?: "audio/*"),
                 null
             )
         }
@@ -11457,6 +11847,7 @@ class TagRepository(context: Context) {
 
     companion object {
         private const val BUFFER_BYTES = 64 * 1024
+        private const val MIN_FREE_BYTES = 8L * 1024 * 1024
         private const val COVER_MAX_PX = 800
         private const val PREVIEW_PX = 600
 
@@ -11506,6 +11897,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.widget.doOnTextChanged
 import androidx.lifecycle.lifecycleScope
 import com.elg.music.R
+import com.elg.music.data.local.SettingsRepository
 import com.elg.music.data.model.AudioFileInfo
 import com.elg.music.data.model.TagData
 import com.elg.music.data.model.TechInfo
@@ -11563,7 +11955,7 @@ private class FieldRow(val binding: ItemTagFieldBinding) {
 /**
  * Éditeur de tags « Studio Edition » (étape 6 de la v1.4).
  *
- * À l'ouverture, un avertissement légal doit être accepté ; « Annuler » ferme l'écran. L'édition
+ * À la première ouverture, un avertissement légal doit être accepté (consentement mémorisé dans le DataStore, puis ignoré) ; « Annuler » ferme l'écran. L'édition
  * couvre 16 champs, la pochette (depuis la galerie), un inspecteur technique et le remplissage
  * depuis le nom de fichier. L'enregistrement passe par [TagRepository] : écriture dans le fichier
  * MP3 après `MediaStore.createWriteRequest`, mise à jour du MediaStore et de la base Room, puis
@@ -11573,12 +11965,13 @@ class TagEditorActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityTagEditorBinding
     private lateinit var repository: TagRepository
+    private lateinit var settings: SettingsRepository
     private val playerController: PlayerController by lazy { PlayerController(this) }
 
     private val rows = LinkedHashMap<TagField, FieldRow>()
     private var songId = INVALID_ID
     private var fileInfo: AudioFileInfo? = null
-    private var isMp3 = false
+    private var fileWritable = false
     private var loaded = false
     private var warningAccepted = false
     private var warningDialog: AlertDialog? = null
@@ -11613,13 +12006,27 @@ class TagEditorActivity : AppCompatActivity() {
             return
         }
         repository = TagRepository(this)
+        settings = SettingsRepository(this)
         warningAccepted = savedInstanceState?.getBoolean(KEY_ACCEPTED, false) ?: false
         savedForm = savedInstanceState?.getBundle(KEY_FORM)
         newCoverJpeg = savedInstanceState?.getByteArray(KEY_COVER)
 
         buildFields()
         setupActions()
-        if (warningAccepted) loadData() else showWarning()
+        if (warningAccepted) {
+            loadData()
+        } else {
+            // v1.5 : le consentement est mémorisé dans le DataStore ; une fois donné, la boîte de dialogue
+            // n'est plus jamais affichée, quel que soit le morceau édité.
+            lifecycleScope.launch {
+                if (settings.isTagEditorDisclaimerAccepted()) {
+                    warningAccepted = true
+                    loadData()
+                } else {
+                    showWarning()
+                }
+            }
+        }
     }
 
     override fun onStart() {
@@ -11664,6 +12071,7 @@ class TagEditorActivity : AppCompatActivity() {
             .setNegativeButton(R.string.tag_warning_cancel) { dialogInterface, _ -> dialogInterface.cancel() }
             .setPositiveButton(R.string.tag_warning_accept) { _, _ ->
                 warningAccepted = true
+                lifecycleScope.launch { settings.setTagEditorDisclaimerAccepted(true) }
                 loadData()
             }
             .setOnCancelListener { finish() }
@@ -11751,7 +12159,7 @@ class TagEditorActivity : AppCompatActivity() {
                 return@launch
             }
             fileInfo = info
-            isMp3 = repository.isMp3(info)
+            fileWritable = repository.isFileWritable(info)
             val bundle = repository.readTags(info)
 
             fillForm(bundle.tags)
@@ -11760,9 +12168,10 @@ class TagEditorActivity : AppCompatActivity() {
                 savedForm = null
             }
             renderTech(bundle.tech)
-            binding.buttonChangeCover.isEnabled = isMp3
-            binding.textTagCoverNote.visibility = if (isMp3) View.GONE else View.VISIBLE
-            binding.textTagFormatNote.visibility = if (isMp3) View.GONE else View.VISIBLE
+            // v1.5 : la pochette se change pour tous les formats (intégrée au fichier, ou conservée dans le cache sécurisé).
+            binding.buttonChangeCover.isEnabled = true
+            binding.textTagCoverNote.visibility = if (fileWritable) View.GONE else View.VISIBLE
+            binding.textTagFormatNote.visibility = if (fileWritable) View.GONE else View.VISIBLE
 
             val pending = newCoverJpeg
             if (pending != null) {
@@ -11897,7 +12306,7 @@ class TagEditorActivity : AppCompatActivity() {
         setBusy(true)
         // Le fichier MP3 va être réécrit : la lecture de ce morceau est suspendue le temps de l'opération.
         val info = fileInfo
-        if (isMp3 && info != null) playerController.pauseForFileEdit(info.id.toString())
+        if (fileWritable && info != null) playerController.pauseForFileEdit(info.id.toString())
         runSave(allowFileWrite = true)
     }
 
@@ -11951,7 +12360,7 @@ class TagEditorActivity : AppCompatActivity() {
 
     /** Autorisation absente : un MP3 n'est pas modifié ; les autres formats sont enregistrés dans la base seulement. */
     private fun onWriteAccessUnavailable(messageRes: Int) {
-        if (isMp3) {
+        if (fileWritable) {
             endSaving()
             playerController.cancelFileEdit()
             Toast.makeText(this, messageRes, Toast.LENGTH_LONG).show()
@@ -11989,7 +12398,7 @@ class TagEditorActivity : AppCompatActivity() {
         binding.buttonTagSave.isEnabled = !busy
         binding.buttonTagCancel.isEnabled = !busy
         binding.buttonAutoFill.isEnabled = !busy
-        binding.buttonChangeCover.isEnabled = !busy && isMp3
+        binding.buttonChangeCover.isEnabled = !busy
         binding.progressTagLoading.visibility = if (busy) View.VISIBLE else View.GONE
     }
 
@@ -12252,6 +12661,1677 @@ cat << 'EOF' > app/src/main/res/layout/item_tag_field.xml
 </com.google.android.material.textfield.TextInputLayout>
 EOF
 
+echo "  -> app/src/main/java/com/elg/music/data/local/PlaybackStateStore.kt"
+mkdir -p app/src/main/java/com/elg/music/data/local
+cat << 'EOF' > app/src/main/java/com/elg/music/data/local/PlaybackStateStore.kt
+package com.elg.music.data.local
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
+import java.io.IOException
+
+/** DataStore dédié à la reprise de lecture : une seule instance par fichier. */
+private val Context.elgPlaybackDataStore: DataStore<Preferences> by preferencesDataStore(name = "elg_playback_state")
+
+/** Dernier état de lecture connu : file d'attente (identifiants MediaStore), morceau en cours et position. */
+data class SavedPlayback(
+    val lastSongId: Long,
+    val lastPositionMs: Long,
+    val queueIds: List<Long>,
+    val queueIndex: Int
+)
+
+/**
+ * Mini-lecteur persistant (v1.5) : sauvegarde `last_song_id`, `last_position` et `queue_ids` dans Jetpack DataStore.
+ * Au démarrage, le service recharge la file d'attente en pause : le mini-lecteur reste visible et réactif, même
+ * après la fermeture de l'application ou le redémarrage du téléphone.
+ */
+class PlaybackStateStore(context: Context) {
+
+    private val store = context.applicationContext.elgPlaybackDataStore
+
+    suspend fun save(state: SavedPlayback) {
+        if (state.queueIds.isEmpty()) return
+        store.edit { prefs ->
+            prefs[KEY_LAST_SONG_ID] = state.lastSongId
+            prefs[KEY_LAST_POSITION] = state.lastPositionMs.coerceAtLeast(0L)
+            prefs[KEY_QUEUE_IDS] = state.queueIds.take(MAX_QUEUE).joinToString(",")
+            prefs[KEY_QUEUE_INDEX] = state.queueIndex.coerceAtLeast(0)
+        }
+    }
+
+    suspend fun load(): SavedPlayback? {
+        val prefs = store.data
+            .catch { error -> if (error is IOException) emit(emptyPreferences()) else throw error }
+            .first()
+        val ids = prefs[KEY_QUEUE_IDS]?.split(',')?.mapNotNull { it.trim().toLongOrNull() }.orEmpty()
+        if (ids.isEmpty()) return null
+        val songId = prefs[KEY_LAST_SONG_ID] ?: ids.first()
+        val savedIndex = prefs[KEY_QUEUE_INDEX] ?: 0
+        val index = if (savedIndex in ids.indices && ids[savedIndex] == songId) savedIndex else ids.indexOf(songId).coerceAtLeast(0)
+        return SavedPlayback(songId, prefs[KEY_LAST_POSITION] ?: 0L, ids, index)
+    }
+
+    suspend fun clear() {
+        store.edit { it.clear() }
+    }
+
+    private companion object {
+        const val MAX_QUEUE = 5000
+        val KEY_LAST_SONG_ID = longPreferencesKey("last_song_id")
+        val KEY_LAST_POSITION = longPreferencesKey("last_position")
+        val KEY_QUEUE_IDS = stringPreferencesKey("queue_ids")
+        val KEY_QUEUE_INDEX = intPreferencesKey("queue_index")
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/playback/MediaItemFactory.kt"
+mkdir -p app/src/main/java/com/elg/music/playback
+cat << 'EOF' > app/src/main/java/com/elg/music/playback/MediaItemFactory.kt
+package com.elg.music.playback
+
+import android.os.Bundle
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import com.elg.music.data.model.Song
+
+/** Construit les [MediaItem] du lecteur à partir d'un [Song] (même format que l'écran principal). */
+object MediaItemFactory {
+
+    fun fromSong(song: Song): MediaItem {
+        val metadata = MediaMetadata.Builder()
+            .setTitle(song.title)
+            .setArtist(song.artist)
+            .setAlbumTitle(song.album)
+            // L'Uri du fichier sert de clé à ArtworkBitmapLoader (pochette intégrée, sinon pochette par défaut).
+            .setArtworkUri(song.contentUri)
+            .setDurationMs(song.durationMs)
+        if (song.isMidi) {
+            metadata.setExtras(Bundle().apply { putString(MidiSupport.EXTRA_MIDI_URI, song.contentUri.toString()) })
+        }
+        return MediaItem.Builder()
+            .setMediaId(song.id.toString())
+            .setUri(song.contentUri)
+            .setMediaMetadata(metadata.build())
+            .build()
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/data/repository/AudioTagWriter.kt"
+mkdir -p app/src/main/java/com/elg/music/data/repository
+cat << 'EOF' > app/src/main/java/com/elg/music/data/repository/AudioTagWriter.kt
+package com.elg.music.data.repository
+
+import android.graphics.BitmapFactory
+import android.util.Base64
+import com.elg.music.data.model.TagData
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.IOException
+import java.io.OutputStream
+import java.io.RandomAccessFile
+import java.util.Locale
+
+/** Familles de conteneurs audio dont ELG Music sait réécrire les métadonnées et la pochette. */
+enum class AudioContainer { MP3, MP4, FLAC, OGG, WAV, AIFF, ASF, APE, WAVPACK, MATROSKA, UNSUPPORTED }
+
+/** Le fichier a une structure que l'écrivain ne sait pas modifier sans risque : repli sur Room + cache. */
+class UnsupportedContainerException(message: String) : IOException(message)
+
+/**
+ * Point d'entrée du marquage multi-formats (v1.5).
+ *
+ * Chaque écrivain lit le fichier d'origine ([source]) et produit un fichier complet ([target]) ; la
+ * recopie sur le fichier réel, via un descripteur système, est faite par [TagRepository]. Le fichier
+ * d'origine n'est donc jamais touché tant que le nouveau fichier n'est pas entièrement construit.
+ *
+ * Un champ vide signifie « champ supprimé » ; une pochette `null` signifie « pochette inchangée ».
+ */
+object AudioTagWriter {
+
+    /** Classement par extension et type MIME (sert à l'interface ; l'écriture confirme par la signature binaire). */
+    fun classify(displayName: String, mime: String?): AudioContainer {
+        val ext = displayName.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        val type = mime?.lowercase(Locale.ROOT).orEmpty()
+        return when {
+            ext in setOf("mp3", "mp2", "aac", "adts") -> AudioContainer.MP3
+            ext in setOf("m4a", "m4b", "m4r", "mp4", "alac") -> AudioContainer.MP4
+            ext == "flac" -> AudioContainer.FLAC
+            ext in setOf("ogg", "oga", "opus") -> AudioContainer.OGG
+            ext in setOf("wav", "wave") -> AudioContainer.WAV
+            ext in setOf("aif", "aiff", "aifc") -> AudioContainer.AIFF
+            ext in setOf("wma", "asf") -> AudioContainer.ASF
+            ext == "ape" -> AudioContainer.APE
+            ext == "wv" -> AudioContainer.WAVPACK
+            ext in setOf("mkv", "mka", "webm") -> AudioContainer.MATROSKA
+            ext in setOf("mid", "midi", "amr", "awb", "ac3", "dts", "3gp", "3ga") -> AudioContainer.UNSUPPORTED
+            type == "audio/mpeg" || type == "audio/mp3" || type == "audio/aac" -> AudioContainer.MP3
+            type == "audio/flac" || type == "audio/x-flac" -> AudioContainer.FLAC
+            type == "audio/ogg" || type == "application/ogg" || type == "audio/opus" -> AudioContainer.OGG
+            type == "audio/x-wav" || type == "audio/wav" || type == "audio/vnd.wave" -> AudioContainer.WAV
+            type == "audio/aiff" || type == "audio/x-aiff" -> AudioContainer.AIFF
+            type == "audio/mp4" || type == "audio/x-m4a" || type == "audio/m4a" -> AudioContainer.MP4
+            type == "audio/x-ms-wma" || type == "video/x-ms-asf" -> AudioContainer.ASF
+            type == "audio/x-matroska" || type == "video/x-matroska" || type == "audio/webm" -> AudioContainer.MATROSKA
+            type == "audio/x-ape" || type == "audio/ape" -> AudioContainer.APE
+            else -> AudioContainer.UNSUPPORTED
+        }
+    }
+
+    /**
+     * Reconnaît le conteneur d'après les premiers octets du fichier. Renvoie null si la signature
+     * n'est pas concluante (l'appelant se rabat alors sur [classify]).
+     */
+    fun sniff(head: ByteArray, length: Int): AudioContainer? {
+        fun starts(text: String, offset: Int = 0): Boolean {
+            if (length < offset + text.length) return false
+            for (i in text.indices) if (head[offset + i] != text[i].code.toByte()) return false
+            return true
+        }
+        return when {
+            starts("fLaC") -> AudioContainer.FLAC
+            starts("OggS") -> AudioContainer.OGG
+            starts("RIFF") && starts("WAVE", 8) -> AudioContainer.WAV
+            starts("FORM") && (starts("AIFF", 8) || starts("AIFC", 8)) -> AudioContainer.AIFF
+            starts("MAC ") -> AudioContainer.APE
+            starts("wvpk") -> AudioContainer.WAVPACK
+            starts("ftyp", 4) -> AudioContainer.MP4
+            length >= 4 && head[0] == 0x1A.toByte() && head[1] == 0x45.toByte() &&
+                head[2] == 0xDF.toByte() && head[3] == 0xA3.toByte() -> AudioContainer.MATROSKA
+            length >= 4 && head[0] == 0x30.toByte() && head[1] == 0x26.toByte() &&
+                head[2] == 0xB2.toByte() && head[3] == 0x75.toByte() -> AudioContainer.ASF
+            starts("MThd") || starts("#!AMR") -> AudioContainer.UNSUPPORTED
+            length >= 2 && head[0] == 0x0B.toByte() && head[1] == 0x77.toByte() -> AudioContainer.UNSUPPORTED
+            length >= 4 && head[0] == 0x7F.toByte() && head[1] == 0xFE.toByte() &&
+                head[2] == 0x80.toByte() && head[3] == 0x01.toByte() -> AudioContainer.UNSUPPORTED
+            starts("ID3") -> AudioContainer.MP3
+            length >= 2 && head[0] == 0xFF.toByte() && (head[1].toInt() and 0xE0) == 0xE0 -> AudioContainer.MP3
+            else -> null
+        }
+    }
+
+    /** Écrit dans [target] une copie de [source] portant les nouveaux tags (tous formats sauf MP3, traité par [Id3TagCodec]). */
+    fun write(container: AudioContainer, source: File, target: File, tags: TagData, coverJpeg: ByteArray?) {
+        when (container) {
+            AudioContainer.FLAC -> FlacTagWriter.write(source, target, tags, coverJpeg)
+            AudioContainer.OGG -> OggTagWriter.write(source, target, tags, coverJpeg)
+            AudioContainer.MP4 -> Mp4TagWriter.write(source, target, tags, coverJpeg)
+            AudioContainer.WAV -> RiffTagWriter.write(source, target, tags, coverJpeg, bigEndian = false)
+            AudioContainer.AIFF -> RiffTagWriter.write(source, target, tags, coverJpeg, bigEndian = true)
+            AudioContainer.APE, AudioContainer.WAVPACK -> Apev2TagWriter.write(source, target, tags, coverJpeg)
+            AudioContainer.ASF -> AsfTagWriter.write(source, target, tags, coverJpeg)
+            AudioContainer.MATROSKA -> MatroskaTagWriter.write(source, target, tags, coverJpeg)
+            AudioContainer.MP3, AudioContainer.UNSUPPORTED ->
+                throw UnsupportedContainerException("Conteneur non géré par l'écrivain multi-formats")
+        }
+    }
+}
+
+/** Petits utilitaires binaires partagés par les écrivains. */
+internal object Bin {
+    fun le16(v: Int): ByteArray = byteArrayOf(v.toByte(), (v shr 8).toByte())
+    fun le32(v: Long): ByteArray = byteArrayOf(v.toByte(), (v shr 8).toByte(), (v shr 16).toByte(), (v shr 24).toByte())
+    fun le64(v: Long): ByteArray = ByteArray(8) { (v shr (8 * it)).toByte() }
+    fun be16(v: Int): ByteArray = byteArrayOf((v shr 8).toByte(), v.toByte())
+    fun be32(v: Long): ByteArray = byteArrayOf((v shr 24).toByte(), (v shr 16).toByte(), (v shr 8).toByte(), v.toByte())
+
+    fun readLe32(b: ByteArray, o: Int): Long =
+        (b[o].toLong() and 0xFF) or ((b[o + 1].toLong() and 0xFF) shl 8) or
+            ((b[o + 2].toLong() and 0xFF) shl 16) or ((b[o + 3].toLong() and 0xFF) shl 24)
+
+    fun readLe16(b: ByteArray, o: Int): Int = (b[o].toInt() and 0xFF) or ((b[o + 1].toInt() and 0xFF) shl 8)
+
+    fun readLe64(b: ByteArray, o: Int): Long = readLe32(b, o) or (readLe32(b, o + 4) shl 32)
+
+    fun readBe32(b: ByteArray, o: Int): Long =
+        ((b[o].toLong() and 0xFF) shl 24) or ((b[o + 1].toLong() and 0xFF) shl 16) or
+            ((b[o + 2].toLong() and 0xFF) shl 8) or (b[o + 3].toLong() and 0xFF)
+
+    fun readBe64(b: ByteArray, o: Int): Long = (readBe32(b, o) shl 32) or readBe32(b, o + 4)
+
+    fun readBytes(raf: RandomAccessFile, offset: Long, length: Int): ByteArray {
+        val data = ByteArray(length)
+        raf.seek(offset)
+        raf.readFully(data)
+        return data
+    }
+
+    /** Recopie [start, end) du fichier dans [out]. */
+    fun copyRange(raf: RandomAccessFile, start: Long, end: Long, out: OutputStream) {
+        val buffer = ByteArray(64 * 1024)
+        raf.seek(start)
+        var remaining = end - start
+        while (remaining > 0) {
+            val read = raf.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+            if (read < 0) throw IOException("Fin de fichier inattendue")
+            out.write(buffer, 0, read)
+            remaining -= read
+        }
+    }
+
+    fun concat(vararg parts: ByteArray): ByteArray {
+        val out = ByteArrayOutputStream()
+        parts.forEach { out.write(it) }
+        return out.toByteArray()
+    }
+
+    fun ascii(text: String): ByteArray = text.toByteArray(Charsets.US_ASCII)
+}
+
+/** Commentaires Vorbis (FLAC et Ogg Vorbis / Opus) : lecture, fusion et construction. */
+internal object VorbisComments {
+
+    /** Champs gérés par l'éditeur : remplacés à chaque enregistrement (les autres sont conservés). */
+    private val MANAGED = setOf(
+        "TITLE", "ARTIST", "ALBUM", "ALBUMARTIST", "ALBUM ARTIST", "GENRE", "DATE", "YEAR",
+        "TRACKNUMBER", "TRACKTOTAL", "TOTALTRACKS", "DISCNUMBER", "COMPOSER", "COPYRIGHT",
+        "ORGANIZATION", "PUBLISHER", "ENCODER", "LANGUAGE", "COMMENT", "DESCRIPTION", "LYRICS", "UNSYNCEDLYRICS"
+    )
+
+    class Parsed(val vendor: String, val comments: List<String>)
+
+    /** Lit « vendeur + liste de commentaires » à partir de [offset] (sans l'en-tête de paquet). */
+    fun parse(data: ByteArray, offset: Int): Parsed {
+        var p = offset
+        fun u32(): Int {
+            if (p + 4 > data.size) throw UnsupportedContainerException("Commentaires Vorbis tronqués")
+            val v = Bin.readLe32(data, p).toInt()
+            p += 4
+            return v
+        }
+        val vendorLength = u32()
+        if (vendorLength < 0 || p + vendorLength > data.size) throw UnsupportedContainerException("Vendeur Vorbis invalide")
+        val vendor = String(data, p, vendorLength, Charsets.UTF_8)
+        p += vendorLength
+        val count = u32()
+        val comments = ArrayList<String>()
+        var index = 0
+        while (index < count && p + 4 <= data.size) {
+            val length = u32()
+            if (length < 0 || p + length > data.size) break
+            comments.add(String(data, p, length, Charsets.UTF_8))
+            p += length
+            index++
+        }
+        return Parsed(vendor, comments)
+    }
+
+    /** Corps d'un bloc PICTURE FLAC (type 3 = pochette de face), JPEG. */
+    fun pictureBlock(jpeg: ByteArray): ByteArray {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, bounds)
+        val mime = Bin.ascii("image/jpeg")
+        return Bin.concat(
+            Bin.be32(3), Bin.be32(mime.size.toLong()), mime,
+            Bin.be32(0), // description vide
+            Bin.be32(maxOf(bounds.outWidth, 0).toLong()), Bin.be32(maxOf(bounds.outHeight, 0).toLong()),
+            Bin.be32(24), Bin.be32(0),
+            Bin.be32(jpeg.size.toLong()), jpeg
+        )
+    }
+
+    /**
+     * Construit les données de commentaires (vendeur + liste). Les commentaires non gérés sont conservés ;
+     * si [cover] est fourni, il remplace toute image METADATA_BLOCK_PICTURE existante (cas Ogg).
+     * [includePicture] n'est vrai que pour Ogg : dans FLAC, l'image est un bloc distinct.
+     */
+    fun build(existing: Parsed?, tags: TagData, cover: ByteArray?, includePicture: Boolean): ByteArray {
+        val lines = ArrayList<String>()
+        existing?.comments?.forEach { line ->
+            val key = line.substringBefore('=', "").uppercase(Locale.ROOT)
+            if (key.isEmpty() || key in MANAGED) return@forEach
+            if (key == "METADATA_BLOCK_PICTURE" && cover != null && includePicture) return@forEach
+            lines.add(line)
+        }
+        fun add(key: String, value: String) {
+            if (value.isNotBlank()) lines.add("$key=${value.trim()}")
+        }
+        add("TITLE", tags.title)
+        add("ARTIST", tags.artist)
+        add("ALBUM", tags.album)
+        add("ALBUMARTIST", tags.albumArtist)
+        add("GENRE", tags.genre)
+        add("DATE", tags.year)
+        add("TRACKNUMBER", tags.trackNumber)
+        add("TRACKTOTAL", tags.trackTotal)
+        add("DISCNUMBER", tags.discNumber)
+        add("COMPOSER", tags.composer)
+        add("COPYRIGHT", tags.copyright)
+        add("ORGANIZATION", tags.publisher)
+        add("ENCODER", tags.encoder)
+        add("LANGUAGE", tags.language)
+        add("COMMENT", tags.comment)
+        add("LYRICS", tags.lyrics)
+        if (includePicture && cover != null) {
+            lines.add("METADATA_BLOCK_PICTURE=" + Base64.encodeToString(pictureBlock(cover), Base64.NO_WRAP))
+        }
+        val vendor = (existing?.vendor ?: "ELG Music").toByteArray(Charsets.UTF_8)
+        val out = ByteArrayOutputStream()
+        out.write(Bin.le32(vendor.size.toLong()))
+        out.write(vendor)
+        out.write(Bin.le32(lines.size.toLong()))
+        lines.forEach { line ->
+            val bytes = line.toByteArray(Charsets.UTF_8)
+            out.write(Bin.le32(bytes.size.toLong()))
+            out.write(bytes)
+        }
+        return out.toByteArray()
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/data/repository/CoverCache.kt"
+mkdir -p app/src/main/java/com/elg/music/data/repository
+cat << 'EOF' > app/src/main/java/com/elg/music/data/repository/CoverCache.kt
+package com.elg.music.data.repository
+
+import android.content.Context
+import android.net.Uri
+import java.io.File
+
+/**
+ * Repli hybride (formats sans structure d'image interne : MIDI, AMR, AC-3, DTS bruts, ou fichier que le système
+ * refuse de réécrire) : la pochette choisie est conservée dans `cacheDir/covers/`, sans toucher au fichier audio.
+ */
+object CoverCache {
+
+    private fun directory(context: Context): File =
+        File(context.applicationContext.cacheDir, "covers").also { it.mkdirs() }
+
+    fun fileFor(context: Context, mediaId: Long): File = File(directory(context), "$mediaId.jpg")
+
+    fun save(context: Context, mediaId: Long, jpeg: ByteArray) {
+        val target = fileFor(context, mediaId)
+        val temp = File(target.parentFile, "$mediaId.tmp")
+        temp.writeBytes(jpeg)
+        if (!temp.renameTo(target)) {
+            target.writeBytes(jpeg)
+            temp.delete()
+        }
+    }
+
+    fun delete(context: Context, mediaId: Long) {
+        fileFor(context, mediaId).delete()
+    }
+
+    fun read(context: Context, mediaId: Long): ByteArray? =
+        fileFor(context, mediaId).takeIf { it.isFile && it.length() > 0 }?.let { runCatching { it.readBytes() }.getOrNull() }
+
+    /** Identifiant MediaStore d'une Uri `content://media/external/audio/media/<id>`, ou null. */
+    fun mediaIdOf(uri: Uri?): Long? = uri?.lastPathSegment?.toLongOrNull()
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/data/repository/FlacTagWriter.kt"
+mkdir -p app/src/main/java/com/elg/music/data/repository
+cat << 'EOF' > app/src/main/java/com/elg/music/data/repository/FlacTagWriter.kt
+package com.elg.music.data.repository
+
+import com.elg.music.data.model.TagData
+import java.io.BufferedOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.io.RandomAccessFile
+
+/**
+ * FLAC : métadonnées Vorbis Comment (bloc 4) et pochette dans un bloc METADATA_BLOCK_PICTURE (bloc 6).
+ * Les blocs STREAMINFO, SEEKTABLE, APPLICATION et CUESHEET sont conservés ; le remplissage (PADDING) est retiré.
+ */
+object FlacTagWriter {
+
+    private class Block(val type: Int, val body: ByteArray)
+
+    fun write(source: File, target: File, tags: TagData, cover: ByteArray?) {
+        RandomAccessFile(source, "r").use { raf ->
+            val magic = ByteArray(4)
+            raf.readFully(magic)
+            if (String(magic, Charsets.US_ASCII) != "fLaC") throw UnsupportedContainerException("Signature FLAC absente")
+
+            var streamInfo: Block? = null
+            val others = ArrayList<Block>()
+            val pictures = ArrayList<Block>()
+            var existing: VorbisComments.Parsed? = null
+            var last = false
+            while (!last) {
+                val header = raf.readUnsignedByte()
+                last = (header and 0x80) != 0
+                val type = header and 0x7F
+                val length = (raf.readUnsignedByte() shl 16) or (raf.readUnsignedByte() shl 8) or raf.readUnsignedByte()
+                val body = ByteArray(length)
+                raf.readFully(body)
+                when (type) {
+                    0 -> streamInfo = Block(0, body)
+                    1 -> Unit // PADDING
+                    4 -> existing = VorbisComments.parse(body, 0)
+                    6 -> if (cover == null) pictures.add(Block(6, body))
+                    127 -> throw UnsupportedContainerException("Bloc FLAC invalide")
+                    else -> others.add(Block(type, body))
+                }
+            }
+            val audioStart = raf.filePointer
+            val info = streamInfo ?: throw UnsupportedContainerException("STREAMINFO absent")
+
+            val blocks = ArrayList<Block>()
+            blocks.add(info)
+            blocks.add(Block(4, VorbisComments.build(existing, tags, cover, includePicture = false)))
+            blocks.addAll(others)
+            if (cover != null) blocks.add(Block(6, VorbisComments.pictureBlock(cover)))
+            blocks.addAll(pictures)
+
+            BufferedOutputStream(FileOutputStream(target), 64 * 1024).use { out ->
+                out.write(magic)
+                blocks.forEachIndexed { index, block ->
+                    if (block.body.size > 0xFFFFFF) throw UnsupportedContainerException("Bloc FLAC trop volumineux")
+                    val flag = if (index == blocks.lastIndex) 0x80 else 0
+                    out.write(flag or block.type)
+                    out.write(block.body.size shr 16)
+                    out.write(block.body.size shr 8)
+                    out.write(block.body.size)
+                    out.write(block.body)
+                }
+                Bin.copyRange(raf, audioStart, raf.length(), out)
+            }
+        }
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/data/repository/OggTagWriter.kt"
+mkdir -p app/src/main/java/com/elg/music/data/repository
+cat << 'EOF' > app/src/main/java/com/elg/music/data/repository/OggTagWriter.kt
+package com.elg.music.data.repository
+
+import com.elg.music.data.model.TagData
+import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
+import java.io.EOFException
+import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
+import java.io.RandomAccessFile
+
+/**
+ * Ogg Vorbis et Ogg Opus : le paquet de commentaires (Vorbis Comment) est reconstruit, les pages d'en-tête
+ * sont recomposées, puis les pages audio sont recopiées (numéros de page et CRC recalculés si besoin).
+ * La pochette est une entrée METADATA_BLOCK_PICTURE encodée en Base64, comme le fait FLAC.
+ * Seuls les flux à un seul programme logique sont gérés ; les autres basculent sur le repli Room + cache.
+ */
+object OggTagWriter {
+
+    private val CRC_TABLE = IntArray(256).also { table ->
+        for (i in 0 until 256) {
+            var r = i shl 24
+            repeat(8) {
+                r = if ((r and Int.MIN_VALUE) != 0) (r shl 1) xor 0x04C11DB7 else r shl 1
+            }
+            table[i] = r
+        }
+    }
+
+    private fun crc(bytes: ByteArray): Int {
+        var c = 0
+        for (b in bytes) c = (c shl 8) xor CRC_TABLE[((c ushr 24) xor (b.toInt() and 0xFF)) and 0xFF]
+        return c
+    }
+
+    private class Page(
+        val headerType: Int,
+        val granule: Long,
+        val serial: Long,
+        val sequence: Long,
+        val segments: ByteArray,
+        val data: ByteArray,
+        val totalLength: Int
+    )
+
+    private fun readPage(raf: RandomAccessFile): Page? {
+        val start = raf.filePointer
+        if (start + 27 > raf.length()) return null
+        val header = ByteArray(27)
+        raf.readFully(header)
+        if (String(header, 0, 4, Charsets.US_ASCII) != "OggS") {
+            raf.seek(start)
+            return null
+        }
+        val count = header[26].toInt() and 0xFF
+        val segments = ByteArray(count)
+        raf.readFully(segments)
+        var dataLength = 0
+        for (s in segments) dataLength += s.toInt() and 0xFF
+        val data = ByteArray(dataLength)
+        try {
+            raf.readFully(data)
+        } catch (eof: EOFException) {
+            raf.seek(start)
+            return null
+        }
+        return Page(
+            headerType = header[5].toInt() and 0xFF,
+            granule = Bin.readLe64(header, 6),
+            serial = Bin.readLe32(header, 14),
+            sequence = Bin.readLe32(header, 18),
+            segments = segments,
+            data = data,
+            totalLength = 27 + count + dataLength
+        )
+    }
+
+    private fun serialize(page: Page): ByteArray {
+        val out = ByteArray(page.totalLength)
+        "OggS".toByteArray(Charsets.US_ASCII).copyInto(out, 0)
+        out[4] = 0
+        out[5] = page.headerType.toByte()
+        Bin.le64(page.granule).copyInto(out, 6)
+        Bin.le32(page.serial).copyInto(out, 14)
+        Bin.le32(page.sequence).copyInto(out, 18)
+        out[26] = page.segments.size.toByte()
+        page.segments.copyInto(out, 27)
+        page.data.copyInto(out, 27 + page.segments.size)
+        Bin.le32(crc(out).toLong() and 0xFFFFFFFFL).copyInto(out, 22)
+        return out
+    }
+
+    /** Découpe [packets] en pages (255 segments au plus par page, paquets répartis sur plusieurs pages si besoin). */
+    private fun paginate(
+        packets: List<ByteArray>,
+        serial: Long,
+        firstSequence: Long,
+        beginOfStream: Boolean
+    ): List<Page> {
+        val pages = ArrayList<Page>()
+        var sequence = firstSequence
+        val lacing = ByteArrayOutputStream()
+        val data = ByteArrayOutputStream()
+        var continued = false
+        var first = true
+
+        fun flush(nextContinued: Boolean) {
+            if (lacing.size() == 0) return
+            var type = if (continued) 0x01 else 0
+            if (first && beginOfStream) type = type or 0x02
+            first = false
+            val page = Page(type, 0L, serial, sequence, lacing.toByteArray(), data.toByteArray(), 0)
+            pages.add(Page(page.headerType, page.granule, page.serial, page.sequence, page.segments, page.data,
+                27 + page.segments.size + page.data.size))
+            sequence++
+            lacing.reset()
+            data.reset()
+            continued = nextContinued
+        }
+
+        for (packet in packets) {
+            var offset = 0
+            var remaining = packet.size
+            while (true) {
+                val take = minOf(remaining, 255)
+                lacing.write(take)
+                data.write(packet, offset, take)
+                offset += take
+                remaining -= take
+                val packetEnds = take < 255
+                if (lacing.size() == 255) flush(nextContinued = !packetEnds)
+                if (packetEnds) break
+            }
+        }
+        flush(nextContinued = false)
+        return pages
+    }
+
+    fun write(source: File, target: File, tags: TagData, cover: ByteArray?) {
+        RandomAccessFile(source, "r").use { raf ->
+            val firstPage = readPage(raf) ?: throw UnsupportedContainerException("Page Ogg illisible")
+            val serial = firstPage.serial
+            val identification = firstPage.data
+            val isOpus = identification.size >= 8 && String(identification, 0, 8, Charsets.US_ASCII) == "OpusHead"
+            val isVorbis = identification.size >= 7 && identification[0] == 1.toByte() &&
+                String(identification, 1, 6, Charsets.US_ASCII) == "vorbis"
+            if (!isOpus && !isVorbis) throw UnsupportedContainerException("Flux Ogg non géré (ni Vorbis ni Opus)")
+            // L'identification doit tenir seule dans sa page (un seul paquet complet).
+            if (firstPage.segments.isEmpty() || (firstPage.segments.last().toInt() and 0xFF) == 255) {
+                throw UnsupportedContainerException("Page d'identification inhabituelle")
+            }
+            val headerPackets = if (isOpus) 2 else 3
+
+            val packets = ArrayList<ByteArray>()
+            packets.add(identification)
+            val current = ByteArrayOutputStream()
+            var oldHeaderPages = 1
+            var endedCleanly = true
+            while (packets.size < headerPackets) {
+                val page = readPage(raf) ?: throw UnsupportedContainerException("En-têtes Ogg incomplets")
+                if (page.serial != serial) throw UnsupportedContainerException("Flux Ogg multiplexé")
+                oldHeaderPages++
+                var offset = 0
+                endedCleanly = true
+                for ((index, segment) in page.segments.withIndex()) {
+                    val size = segment.toInt() and 0xFF
+                    current.write(page.data, offset, size)
+                    offset += size
+                    endedCleanly = true
+                    if (size < 255) {
+                        packets.add(current.toByteArray())
+                        current.reset()
+                        if (packets.size == headerPackets && index != page.segments.lastIndex) endedCleanly = false
+                    }
+                }
+                if (packets.size == headerPackets && (!endedCleanly || current.size() != 0)) {
+                    throw UnsupportedContainerException("Les en-têtes Ogg ne se terminent pas en fin de page")
+                }
+            }
+            val audioStart = raf.filePointer
+
+            val commentPacket = packets[1]
+            val existing = try {
+                if (isOpus) {
+                    if (commentPacket.size < 8) null else VorbisComments.parse(commentPacket, 8)
+                } else {
+                    if (commentPacket.size < 7) null else VorbisComments.parse(commentPacket, 7)
+                }
+            } catch (broken: UnsupportedContainerException) {
+                null
+            }
+            val commentData = VorbisComments.build(existing, tags, cover, includePicture = true)
+            val newComment = if (isOpus) {
+                Bin.concat(Bin.ascii("OpusTags"), commentData)
+            } else {
+                Bin.concat(byteArrayOf(3), Bin.ascii("vorbis"), commentData, byteArrayOf(1))
+            }
+
+            val newPages = ArrayList<Page>()
+            newPages.addAll(paginate(listOf(identification), serial, 0L, beginOfStream = true))
+            val rest = ArrayList<ByteArray>()
+            rest.add(newComment)
+            if (isVorbis) rest.add(packets[2])
+            newPages.addAll(paginate(rest, serial, newPages.size.toLong(), beginOfStream = false))
+            val delta = newPages.size - oldHeaderPages
+
+            BufferedOutputStream(FileOutputStream(target), 64 * 1024).use { out ->
+                newPages.forEach { out.write(serialize(it)) }
+                copyAudioPages(raf, audioStart, serial, delta.toLong(), out)
+            }
+        }
+    }
+
+    private fun copyAudioPages(raf: RandomAccessFile, start: Long, serial: Long, delta: Long, out: OutputStream) {
+        raf.seek(start)
+        while (true) {
+            val position = raf.filePointer
+            val page = readPage(raf)
+            if (page == null) {
+                // Fin du fichier, ou octets étrangers : recopiés tels quels.
+                Bin.copyRange(raf, position, raf.length(), out)
+                return
+            }
+            if (delta == 0L || page.serial != serial) {
+                Bin.copyRange(raf, position, position + page.totalLength, out)
+            } else {
+                val renumbered = Page(page.headerType, page.granule, page.serial, page.sequence + delta,
+                    page.segments, page.data, page.totalLength)
+                out.write(serialize(renumbered))
+            }
+        }
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/data/repository/Mp4TagWriter.kt"
+mkdir -p app/src/main/java/com/elg/music/data/repository
+cat << 'EOF' > app/src/main/java/com/elg/music/data/repository/Mp4TagWriter.kt
+package com.elg.music.data.repository
+
+import com.elg.music.data.model.TagData
+import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.io.RandomAccessFile
+
+/**
+ * M4A / AAC / ALAC (conteneur MP4) : les tags vivent dans moov › udta › meta › ilst, la pochette dans l'atome
+ * `covr`. Le bloc `moov` est reconstruit ; si sa taille change et qu'il précède les données (`mdat`), les
+ * décalages des tables stco / co64 sont corrigés. Les MP4 fragmentés (moof) ne sont pas modifiés.
+ */
+object Mp4TagWriter {
+
+    private class TopBox(val type: String, val start: Long, val size: Long, val headerSize: Int)
+
+    private class Child(val type: String, val payload: ByteArray)
+
+    private const val COPYRIGHT_SIGN = "\u00A9"
+    private val T_TITLE = COPYRIGHT_SIGN + "nam"
+    private val T_ARTIST = COPYRIGHT_SIGN + "ART"
+    private val T_ALBUM = COPYRIGHT_SIGN + "alb"
+    private val T_GENRE = COPYRIGHT_SIGN + "gen"
+    private val T_YEAR = COPYRIGHT_SIGN + "day"
+    private val T_COMPOSER = COPYRIGHT_SIGN + "wrt"
+    private val T_ENCODER = COPYRIGHT_SIGN + "too"
+    private val T_COMMENT = COPYRIGHT_SIGN + "cmt"
+    private val T_LYRICS = COPYRIGHT_SIGN + "lyr"
+
+    private val MANAGED_ATOMS = setOf(
+        T_TITLE, T_ARTIST, T_ALBUM, "aART", T_GENRE, "gnre", T_YEAR, "trkn", "disk",
+        T_COMPOSER, "cprt", T_ENCODER, T_COMMENT, T_LYRICS
+    )
+    private val MANAGED_FREEFORM = setOf("PUBLISHER", "LANGUAGE")
+    private val CONTAINERS = setOf("trak", "mdia", "minf", "stbl")
+
+    fun write(source: File, target: File, tags: TagData, cover: ByteArray?) {
+        RandomAccessFile(source, "r").use { raf ->
+            val total = raf.length()
+            val top = ArrayList<TopBox>()
+            var position = 0L
+            while (position + 8 <= total) {
+                raf.seek(position)
+                var size = raf.readInt().toLong() and 0xFFFFFFFFL
+                val typeBytes = ByteArray(4)
+                raf.readFully(typeBytes)
+                val type = String(typeBytes, Charsets.ISO_8859_1)
+                var header = 8
+                if (size == 1L) {
+                    size = raf.readLong()
+                    header = 16
+                } else if (size == 0L) {
+                    size = total - position
+                }
+                if (size < header || position + size > total) throw UnsupportedContainerException("Boîte MP4 invalide")
+                top.add(TopBox(type, position, size, header))
+                position += size
+            }
+            if (top.any { it.type == "moof" }) throw UnsupportedContainerException("MP4 fragmenté non géré")
+            val moov = top.firstOrNull { it.type == "moov" } ?: throw UnsupportedContainerException("Bloc moov absent")
+            val oldPayloadSize = moov.size - moov.headerSize
+            if (oldPayloadSize > 64L * 1024 * 1024) throw UnsupportedContainerException("Bloc moov trop volumineux")
+
+            val oldPayload = Bin.readBytes(raf, moov.start + moov.headerSize, oldPayloadSize.toInt())
+            val newPayload = rebuildMoov(oldPayload, tags, cover)
+            val delta = newPayload.size.toLong() - oldPayload.size.toLong()
+            if (delta != 0L) patchChunkOffsets(newPayload, 0, newPayload.size, moov.start, delta)
+
+            BufferedOutputStream(FileOutputStream(target), 64 * 1024).use { out ->
+                for (box in top) {
+                    if (box === moov) {
+                        out.write(Bin.be32(8L + newPayload.size))
+                        out.write(Bin.ascii("moov"))
+                        out.write(newPayload)
+                    } else {
+                        Bin.copyRange(raf, box.start, box.start + box.size, out)
+                    }
+                }
+            }
+        }
+    }
+
+    // ===================== Lecture / assemblage de boîtes =====================
+
+    private fun parseChildren(data: ByteArray, from: Int): List<Child> {
+        val out = ArrayList<Child>()
+        var p = from
+        while (p + 8 <= data.size) {
+            var size = Bin.readBe32(data, p)
+            val type = String(data, p + 4, 4, Charsets.ISO_8859_1)
+            var header = 8
+            if (size == 1L) {
+                if (p + 16 > data.size) break
+                size = Bin.readBe64(data, p + 8)
+                header = 16
+            } else if (size == 0L) {
+                size = (data.size - p).toLong()
+            }
+            if (size < header || p + size > data.size) break
+            out.add(Child(type, data.copyOfRange(p + header, p + size.toInt())))
+            p += size.toInt()
+        }
+        return out
+    }
+
+    private fun box(type: String, payload: ByteArray): ByteArray =
+        Bin.concat(Bin.be32(8L + payload.size), type.toByteArray(Charsets.ISO_8859_1), payload)
+
+    private fun assemble(children: List<Child>): ByteArray {
+        val out = ByteArrayOutputStream()
+        children.forEach { out.write(box(it.type, it.payload)) }
+        return out.toByteArray()
+    }
+
+    private fun dataBox(flags: Int, content: ByteArray): ByteArray =
+        box("data", Bin.concat(byteArrayOf(0, (flags shr 16).toByte(), (flags shr 8).toByte(), flags.toByte()),
+            byteArrayOf(0, 0, 0, 0), content))
+
+    private fun textItem(type: String, value: String): Child =
+        Child(type, dataBox(1, value.toByteArray(Charsets.UTF_8)))
+
+    private fun freeformItem(name: String, value: String): Child {
+        val mean = box("mean", Bin.concat(byteArrayOf(0, 0, 0, 0), Bin.ascii("com.apple.iTunes")))
+        val nameBox = box("name", Bin.concat(byteArrayOf(0, 0, 0, 0), Bin.ascii(name)))
+        return Child("----", Bin.concat(mean, nameBox, dataBox(1, value.toByteArray(Charsets.UTF_8))))
+    }
+
+    private fun freeformName(payload: ByteArray): String? {
+        val nameChild = parseChildren(payload, 0).firstOrNull { it.type == "name" } ?: return null
+        if (nameChild.payload.size <= 4) return null
+        return String(nameChild.payload, 4, nameChild.payload.size - 4, Charsets.UTF_8).uppercase()
+    }
+
+    private fun number(value: String): Int = value.trim().toIntOrNull()?.coerceIn(0, 65535) ?: 0
+
+    private fun defaultHandler(): ByteArray = Bin.concat(
+        byteArrayOf(0, 0, 0, 0, 0, 0, 0, 0),
+        Bin.ascii("mdir"), Bin.ascii("appl"),
+        ByteArray(8), byteArrayOf(0)
+    )
+
+    private fun rebuildMoov(moovPayload: ByteArray, tags: TagData, cover: ByteArray?): ByteArray {
+        val moovChildren = parseChildren(moovPayload, 0).toMutableList()
+        val udtaIndex = moovChildren.indexOfFirst { it.type == "udta" }
+        val udtaChildren: MutableList<Child> =
+            if (udtaIndex >= 0) parseChildren(moovChildren[udtaIndex].payload, 0).toMutableList() else mutableListOf<Child>()
+
+        val metaIndex = udtaChildren.indexOfFirst { it.type == "meta" }
+        val metaChildren: MutableList<Child> = if (metaIndex >= 0) {
+            val payload = udtaChildren[metaIndex].payload
+            if (payload.size < 4) mutableListOf<Child>() else parseChildren(payload, 4).toMutableList()
+        } else {
+            mutableListOf<Child>()
+        }
+        if (metaChildren.none { it.type == "hdlr" }) metaChildren.add(0, Child("hdlr", defaultHandler()))
+
+        val ilstIndex = metaChildren.indexOfFirst { it.type == "ilst" }
+        val existingItems: List<Child> =
+            if (ilstIndex >= 0) parseChildren(metaChildren[ilstIndex].payload, 0) else emptyList<Child>()
+
+        val items = ArrayList<Child>()
+        for (item in existingItems) {
+            when {
+                item.type in MANAGED_ATOMS -> Unit
+                item.type == "covr" && cover != null -> Unit
+                item.type == "----" && freeformName(item.payload) in MANAGED_FREEFORM -> Unit
+                else -> items.add(item)
+            }
+        }
+        fun text(type: String, value: String) {
+            if (value.isNotBlank()) items.add(textItem(type, value.trim()))
+        }
+        text(T_TITLE, tags.title)
+        text(T_ARTIST, tags.artist)
+        text(T_ALBUM, tags.album)
+        text("aART", tags.albumArtist)
+        text(T_GENRE, tags.genre)
+        text(T_YEAR, tags.year)
+        text(T_COMPOSER, tags.composer)
+        text("cprt", tags.copyright)
+        text(T_ENCODER, tags.encoder)
+        text(T_COMMENT, tags.comment)
+        text(T_LYRICS, tags.lyrics)
+        if (tags.trackNumber.isNotBlank() || tags.trackTotal.isNotBlank()) {
+            items.add(Child("trkn", dataBox(0, Bin.concat(
+                byteArrayOf(0, 0), Bin.be16(number(tags.trackNumber)), Bin.be16(number(tags.trackTotal)), byteArrayOf(0, 0)
+            ))))
+        }
+        if (tags.discNumber.isNotBlank()) {
+            items.add(Child("disk", dataBox(0, Bin.concat(
+                byteArrayOf(0, 0), Bin.be16(number(tags.discNumber)), byteArrayOf(0, 0)
+            ))))
+        }
+        if (tags.publisher.isNotBlank()) items.add(freeformItem("PUBLISHER", tags.publisher.trim()))
+        if (tags.language.isNotBlank()) items.add(freeformItem("LANGUAGE", tags.language.trim()))
+        if (cover != null) items.add(Child("covr", dataBox(13, cover)))
+
+        val newIlst = Child("ilst", assemble(items))
+        if (ilstIndex >= 0) metaChildren[ilstIndex] = newIlst else metaChildren.add(newIlst)
+
+        val newMeta = Child("meta", Bin.concat(byteArrayOf(0, 0, 0, 0), assemble(metaChildren)))
+        if (metaIndex >= 0) udtaChildren[metaIndex] = newMeta else udtaChildren.add(newMeta)
+
+        val newUdta = Child("udta", assemble(udtaChildren))
+        if (udtaIndex >= 0) moovChildren[udtaIndex] = newUdta else moovChildren.add(newUdta)
+        return assemble(moovChildren)
+    }
+
+    // ===================== Correction des décalages de données =====================
+
+    /**
+     * Les tables stco / co64 contiennent la position absolue des blocs audio : si `moov` a grossi ou rétréci
+     * et se trouve avant eux, chaque position située après l'ancien début de `moov` est décalée de [delta].
+     */
+    private fun patchChunkOffsets(data: ByteArray, from: Int, to: Int, oldMoovStart: Long, delta: Long) {
+        var p = from
+        while (p + 8 <= to) {
+            var size = Bin.readBe32(data, p)
+            val type = String(data, p + 4, 4, Charsets.ISO_8859_1)
+            var header = 8
+            if (size == 1L) {
+                size = Bin.readBe64(data, p + 8)
+                header = 16
+            } else if (size == 0L) {
+                size = (to - p).toLong()
+            }
+            if (size < header || p + size > to) return
+            val payloadStart = p + header
+            val end = p + size.toInt()
+            when (type) {
+                in CONTAINERS -> patchChunkOffsets(data, payloadStart, end, oldMoovStart, delta)
+                "stco" -> {
+                    val count = Bin.readBe32(data, payloadStart + 4).toInt()
+                    var entry = payloadStart + 8
+                    repeat(count) {
+                        if (entry + 4 > end) return@repeat
+                        val offset = Bin.readBe32(data, entry)
+                        if (offset > oldMoovStart) {
+                            val moved = offset + delta
+                            if (moved < 0 || moved > 0xFFFFFFFFL) throw UnsupportedContainerException("Décalage stco hors limites")
+                            Bin.be32(moved).copyInto(data, entry)
+                        }
+                        entry += 4
+                    }
+                }
+                "co64" -> {
+                    val count = Bin.readBe32(data, payloadStart + 4).toInt()
+                    var entry = payloadStart + 8
+                    repeat(count) {
+                        if (entry + 8 > end) return@repeat
+                        val offset = Bin.readBe64(data, entry)
+                        if (offset > oldMoovStart) {
+                            val moved = offset + delta
+                            Bin.be32(moved shr 32).copyInto(data, entry)
+                            Bin.be32(moved and 0xFFFFFFFFL).copyInto(data, entry + 4)
+                        }
+                        entry += 8
+                    }
+                }
+            }
+            p = end
+        }
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/data/repository/RiffTagWriter.kt"
+mkdir -p app/src/main/java/com/elg/music/data/repository
+cat << 'EOF' > app/src/main/java/com/elg/music/data/repository/RiffTagWriter.kt
+package com.elg.music.data.repository
+
+import com.elg.music.data.model.TagData
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.ByteArrayInputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.io.RandomAccessFile
+
+/**
+ * WAV (RIFF, petit-boutiste) et AIFF (IFF, gros-boutiste) : le tag ID3v2.4 est stocké dans un chunk `id3 `
+ * (WAV) ou `ID3 ` (AIFF) placé en fin de fichier, pochette APIC comprise. Les anciens chunks ID3 sont
+ * remplacés ; tous les autres chunks (fmt, data, LIST…) sont recopiés tels quels.
+ */
+object RiffTagWriter {
+
+    private class Chunk(val id: String, val dataStart: Long, val length: Long)
+
+    fun write(source: File, target: File, tags: TagData, cover: ByteArray?, bigEndian: Boolean) {
+        RandomAccessFile(source, "r").use { raf ->
+            val total = raf.length()
+            if (total < 12) throw UnsupportedContainerException("Fichier trop court")
+            val header = Bin.readBytes(raf, 0, 12)
+            val form = String(header, 0, 4, Charsets.US_ASCII)
+            if (form == "RF64" || form == "BW64") throw UnsupportedContainerException("RF64 non géré")
+            val expected = if (bigEndian) "FORM" else "RIFF"
+            if (form != expected) throw UnsupportedContainerException("En-tête $expected absent")
+
+            val chunks = ArrayList<Chunk>()
+            var position = 12L
+            while (position + 8 <= total) {
+                val head = Bin.readBytes(raf, position, 8)
+                val id = String(head, 0, 4, Charsets.ISO_8859_1)
+                val length = if (bigEndian) Bin.readBe32(head, 4) else Bin.readLe32(head, 4)
+                val dataStart = position + 8
+                if (dataStart + length > total) {
+                    // Dernier chunk tronqué : le fichier est trop abîmé pour être réécrit sans risque.
+                    throw UnsupportedContainerException("Chunk $id tronqué")
+                }
+                chunks.add(Chunk(id, dataStart, length))
+                position = dataStart + length + (length and 1L)
+            }
+
+            val isId3 = { chunk: Chunk -> chunk.id.equals("id3 ", ignoreCase = true) }
+            val oldId3 = chunks.lastOrNull(isId3)
+            val oldFrames: List<Id3TagCodec.Frame> = if (oldId3 != null && oldId3.length in 10..(8L * 1024 * 1024)) {
+                val data = Bin.readBytes(raf, oldId3.dataStart, oldId3.length.toInt())
+                try {
+                    Id3TagCodec.readTag(BufferedInputStream(ByteArrayInputStream(data)))?.frames.orEmpty()
+                } catch (broken: Exception) {
+                    emptyList<Id3TagCodec.Frame>()
+                }
+            } else {
+                emptyList<Id3TagCodec.Frame>()
+            }
+            val newTag = Id3TagCodec.buildTag(oldFrames, tags, cover)
+            val tagChunkId = if (bigEndian) "ID3 " else "id3 "
+
+            val kept = chunks.filterNot(isId3)
+            var riffSize = 4L
+            kept.forEach { riffSize += 8 + it.length + (it.length and 1L) }
+            riffSize += 8 + newTag.size + (newTag.size.toLong() and 1L)
+            if (riffSize > 0xFFFFFFFFL) throw UnsupportedContainerException("Fichier trop volumineux pour RIFF/IFF classique")
+
+            BufferedOutputStream(FileOutputStream(target), 64 * 1024).use { out ->
+                out.write(Bin.ascii(expected))
+                out.write(if (bigEndian) Bin.be32(riffSize) else Bin.le32(riffSize))
+                out.write(header, 8, 4)
+                for (chunk in kept) {
+                    out.write(Bin.ascii(chunk.id.padEnd(4, ' ').substring(0, 4)))
+                    out.write(if (bigEndian) Bin.be32(chunk.length) else Bin.le32(chunk.length))
+                    Bin.copyRange(raf, chunk.dataStart, chunk.dataStart + chunk.length, out)
+                    if ((chunk.length and 1L) == 1L) out.write(0)
+                }
+                out.write(Bin.ascii(tagChunkId))
+                out.write(if (bigEndian) Bin.be32(newTag.size.toLong()) else Bin.le32(newTag.size.toLong()))
+                out.write(newTag)
+                if ((newTag.size and 1) == 1) out.write(0)
+            }
+        }
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/data/repository/Apev2TagWriter.kt"
+mkdir -p app/src/main/java/com/elg/music/data/repository
+cat << 'EOF' > app/src/main/java/com/elg/music/data/repository/Apev2TagWriter.kt
+package com.elg.music.data.repository
+
+import com.elg.music.data.model.TagData
+import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.io.RandomAccessFile
+import java.util.Locale
+
+/**
+ * Monkey's Audio (APE) et WavPack (WV) : tag APEv2 placé en fin de fichier (avant un éventuel ID3v1).
+ * La pochette est l'élément binaire « Cover Art (Front) » (nom de fichier terminé par un zéro, puis l'image).
+ * Les éléments APEv2 qui ne sont pas gérés par l'éditeur sont conservés.
+ */
+object Apev2TagWriter {
+
+    private const val HEADER_FLAG = 0x80000000L
+    private const val IS_HEADER = 0x20000000L
+    private const val CONTAINS_HEADER = 0x80000000L
+    private const val CONTAINS_FOOTER_MASK = 0x40000000L
+    private val MANAGED = setOf(
+        "TITLE", "ARTIST", "ALBUM", "ALBUM ARTIST", "ALBUMARTIST", "GENRE", "YEAR", "TRACK", "DISC", "DISCNUMBER",
+        "COMPOSER", "COPYRIGHT", "PUBLISHER", "ENCODEDBY", "ENCODER", "LANGUAGE", "COMMENT", "LYRICS", "UNSYNCEDLYRICS"
+    )
+
+    private class Item(val key: String, val flags: Long, val value: ByteArray)
+
+    fun write(source: File, target: File, tags: TagData, cover: ByteArray?) {
+        RandomAccessFile(source, "r").use { raf ->
+            val total = raf.length()
+            var end = total
+            var id3v1: ByteArray? = null
+            if (total >= 128) {
+                val tail = Bin.readBytes(raf, total - 128, 3)
+                if (String(tail, Charsets.US_ASCII) == "TAG") {
+                    id3v1 = Bin.readBytes(raf, total - 128, 128)
+                    end = total - 128
+                }
+            }
+
+            var audioEnd = end
+            var existing = emptyList<Item>()
+            if (end >= 32) {
+                val footer = Bin.readBytes(raf, end - 32, 32)
+                if (String(footer, 0, 8, Charsets.US_ASCII) == "APETAGEX") {
+                    val tagSize = Bin.readLe32(footer, 12)
+                    val count = Bin.readLe32(footer, 16).toInt()
+                    val flags = Bin.readLe32(footer, 20)
+                    val hasHeader = (flags and CONTAINS_HEADER) != 0L
+                    val bodyLength = tagSize - 32
+                    if (bodyLength in 0..(32L * 1024 * 1024) && end - 32 - bodyLength >= 0) {
+                        val itemsStart = end - 32 - bodyLength
+                        val body = Bin.readBytes(raf, itemsStart, bodyLength.toInt())
+                        existing = parseItems(body, count)
+                        audioEnd = itemsStart - if (hasHeader) 32 else 0
+                        if (audioEnd < 0) throw UnsupportedContainerException("Tag APEv2 incohérent")
+                    }
+                }
+            }
+
+            val items = ArrayList<Item>()
+            existing.forEach { item ->
+                val key = item.key.uppercase(Locale.ROOT)
+                if (key in MANAGED) return@forEach
+                if (cover != null && key.startsWith("COVER ART")) return@forEach
+                items.add(item)
+            }
+            fun text(key: String, value: String) {
+                if (value.isNotBlank()) items.add(Item(key, 0L, value.trim().toByteArray(Charsets.UTF_8)))
+            }
+            text("Title", tags.title)
+            text("Artist", tags.artist)
+            text("Album", tags.album)
+            text("Album Artist", tags.albumArtist)
+            text("Genre", tags.genre)
+            text("Year", tags.year)
+            if (tags.trackNumber.isNotBlank()) {
+                text("Track", if (tags.trackTotal.isNotBlank()) "${tags.trackNumber.trim()}/${tags.trackTotal.trim()}" else tags.trackNumber)
+            }
+            text("Disc", tags.discNumber)
+            text("Composer", tags.composer)
+            text("Copyright", tags.copyright)
+            text("Publisher", tags.publisher)
+            text("EncodedBy", tags.encoder)
+            text("Language", tags.language)
+            text("Comment", tags.comment)
+            text("Lyrics", tags.lyrics)
+            if (cover != null) {
+                items.add(Item("Cover Art (Front)", 2L, Bin.concat(Bin.ascii("cover.jpg"), byteArrayOf(0), cover)))
+            }
+
+            val body = ByteArrayOutputStream()
+            items.forEach { item ->
+                body.write(Bin.le32(item.value.size.toLong()))
+                body.write(Bin.le32(item.flags))
+                body.write(item.key.toByteArray(Charsets.UTF_8))
+                body.write(0)
+                body.write(item.value)
+            }
+            val bodyBytes = body.toByteArray()
+            val tagSize = bodyBytes.size + 32L
+
+            fun block(isHeader: Boolean): ByteArray {
+                val flags = CONTAINS_HEADER or (if (isHeader) IS_HEADER else 0L)
+                return Bin.concat(
+                    Bin.ascii("APETAGEX"), Bin.le32(2000), Bin.le32(tagSize), Bin.le32(items.size.toLong()),
+                    Bin.le32(flags), ByteArray(8)
+                )
+            }
+
+            BufferedOutputStream(FileOutputStream(target), 64 * 1024).use { out ->
+                Bin.copyRange(raf, 0, audioEnd, out)
+                if (items.isNotEmpty()) {
+                    out.write(block(true))
+                    out.write(bodyBytes)
+                    out.write(block(false))
+                }
+                id3v1?.let { out.write(it) }
+            }
+        }
+    }
+
+    private fun parseItems(body: ByteArray, count: Int): List<Item> {
+        val items = ArrayList<Item>()
+        var p = 0
+        var read = 0
+        while (read < count && p + 8 < body.size) {
+            val valueSize = Bin.readLe32(body, p)
+            val flags = Bin.readLe32(body, p + 4)
+            p += 8
+            var keyEnd = p
+            while (keyEnd < body.size && body[keyEnd] != 0.toByte()) keyEnd++
+            if (keyEnd >= body.size) break
+            val key = String(body, p, keyEnd - p, Charsets.UTF_8)
+            p = keyEnd + 1
+            if (valueSize < 0 || p + valueSize > body.size) break
+            items.add(Item(key, flags and 0x7L, body.copyOfRange(p, p + valueSize.toInt())))
+            p += valueSize.toInt()
+            read++
+        }
+        return items
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/data/repository/AsfTagWriter.kt"
+mkdir -p app/src/main/java/com/elg/music/data/repository
+cat << 'EOF' > app/src/main/java/com/elg/music/data/repository/AsfTagWriter.kt
+package com.elg.music.data.repository
+
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import com.elg.music.data.model.TagData
+import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.io.RandomAccessFile
+import java.util.Locale
+
+/**
+ * WMA (conteneur ASF) : les titres, artistes et droits vont dans l'objet « Content Description », les autres champs
+ * et la pochette (`WM/Picture`, image de face) dans l'objet « Extended Content Description ».
+ * Le champ valeur d'un descripteur étendu est limité à 65 535 octets : la pochette est donc recompressée si besoin.
+ * L'objet « File Properties » (taille du fichier) est mis à jour ; les autres objets d'en-tête sont conservés.
+ */
+object AsfTagWriter {
+
+    private val HEADER_GUID = guid("75B22630-668E-11CF-A6D9-00AA0062CE6C")
+    private val CONTENT_DESCRIPTION = guid("75B22633-668E-11CF-A6D9-00AA0062CE6C")
+    private val EXTENDED_CONTENT = guid("D2D0A440-E307-11D2-97F0-00A0C95EA850")
+    private val FILE_PROPERTIES = guid("8CABDCA1-A947-11CF-8EE4-00C00C205365")
+
+    private const val MAX_VALUE_BYTES = 65535
+    private val MANAGED = setOf(
+        "WM/ALBUMTITLE", "WM/ALBUMARTIST", "WM/GENRE", "WM/YEAR", "WM/TRACKNUMBER", "WM/TRACK", "WM/PARTOFSET",
+        "WM/COMPOSER", "WM/PUBLISHER", "WM/ENCODINGSETTINGS", "WM/LANGUAGE", "WM/LYRICS", "WM/PICTURE"
+    )
+
+    private class AsfObject(val guid: ByteArray, val body: ByteArray)
+    private class Descriptor(val name: String, val type: Int, val value: ByteArray)
+
+    private fun guid(text: String): ByteArray {
+        val p = text.split('-')
+        val bytes = ByteArray(16)
+        fun hex(s: String): ByteArray = ByteArray(s.length / 2) { s.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+        hex(p[0]).reversedArray().copyInto(bytes, 0)
+        hex(p[1]).reversedArray().copyInto(bytes, 4)
+        hex(p[2]).reversedArray().copyInto(bytes, 6)
+        hex(p[3]).copyInto(bytes, 8)
+        hex(p[4]).copyInto(bytes, 10)
+        return bytes
+    }
+
+    private fun utf16(text: String, terminated: Boolean = true): ByteArray {
+        val raw = text.toByteArray(Charsets.UTF_16LE)
+        return if (terminated) raw + byteArrayOf(0, 0) else raw
+    }
+
+    fun write(source: File, target: File, tags: TagData, cover: ByteArray?) {
+        RandomAccessFile(source, "r").use { raf ->
+            val total = raf.length()
+            val head = Bin.readBytes(raf, 0, 30)
+            if (!head.copyOfRange(0, 16).contentEquals(HEADER_GUID)) throw UnsupportedContainerException("En-tête ASF absent")
+            val headerSize = Bin.readLe64(head, 16)
+            val objectCount = Bin.readLe32(head, 24).toInt()
+            if (headerSize < 30 || headerSize > total || headerSize > 64L * 1024 * 1024) {
+                throw UnsupportedContainerException("En-tête ASF invalide")
+            }
+            val headerBody = Bin.readBytes(raf, 30, (headerSize - 30).toInt())
+
+            val objects = ArrayList<AsfObject>()
+            var p = 0
+            repeat(objectCount) {
+                if (p + 24 > headerBody.size) throw UnsupportedContainerException("Objet ASF tronqué")
+                val size = Bin.readLe64(headerBody, p + 16)
+                if (size < 24 || p + size > headerBody.size) throw UnsupportedContainerException("Taille d'objet ASF invalide")
+                objects.add(AsfObject(headerBody.copyOfRange(p, p + 16), headerBody.copyOfRange(p + 24, p + size.toInt())))
+                p += size.toInt()
+            }
+
+            val oldExtended = objects.firstOrNull { it.guid.contentEquals(EXTENDED_CONTENT) }
+            val preserved: List<Descriptor> =
+                if (oldExtended != null) parseDescriptors(oldExtended.body) else emptyList<Descriptor>()
+            val oldContent = objects.firstOrNull { it.guid.contentEquals(CONTENT_DESCRIPTION) }
+
+            val descriptors = ArrayList<Descriptor>()
+            preserved.forEach { d ->
+                val key = d.name.uppercase(Locale.ROOT)
+                if (key in MANAGED && !(key == "WM/PICTURE" && cover == null)) return@forEach
+                descriptors.add(d)
+            }
+            fun text(name: String, value: String) {
+                if (value.isNotBlank()) descriptors.add(Descriptor(name, 0, utf16(value.trim())))
+            }
+            text("WM/AlbumTitle", tags.album)
+            text("WM/AlbumArtist", tags.albumArtist)
+            text("WM/Genre", tags.genre)
+            text("WM/Year", tags.year)
+            if (tags.trackNumber.isNotBlank()) text("WM/TrackNumber", tags.trackNumber)
+            if (tags.discNumber.isNotBlank()) text("WM/PartOfSet", tags.discNumber)
+            text("WM/Composer", tags.composer)
+            text("WM/Publisher", tags.publisher)
+            text("WM/EncodingSettings", tags.encoder)
+            text("WM/Language", tags.language)
+            text("WM/Lyrics", tags.lyrics)
+            if (cover != null) {
+                val fitted = fitCover(cover)
+                val picture = Bin.concat(
+                    byteArrayOf(3), Bin.le32(fitted.size.toLong()), utf16("image/jpeg"), utf16(""), fitted
+                )
+                descriptors.add(Descriptor("WM/Picture", 1, picture))
+            }
+            descriptors.forEach {
+                if (it.value.size > MAX_VALUE_BYTES) throw UnsupportedContainerException("Valeur ASF trop grande (${it.name})")
+            }
+
+            // Content Description : titre, auteur, copyright, description, évaluation.
+            fun oldField(index: Int): String = oldContent?.let { readContentField(it.body, index) }.orEmpty()
+            val rating = oldField(4)
+            val content = ByteArrayOutputStream().also { out ->
+                val fields = listOf(tags.title.trim(), tags.artist.trim(), tags.copyright.trim(), tags.comment.trim(), rating)
+                val encoded = fields.map { if (it.isEmpty()) ByteArray(0) else utf16(it) }
+                encoded.forEach { if (it.size > MAX_VALUE_BYTES) throw UnsupportedContainerException("Champ ASF trop long") }
+                encoded.forEach { out.write(Bin.le16(it.size)) }
+                encoded.forEach { out.write(it) }
+            }.toByteArray()
+
+            val extended = ByteArrayOutputStream().also { out ->
+                out.write(Bin.le16(descriptors.size))
+                descriptors.forEach { d ->
+                    val name = utf16(d.name)
+                    out.write(Bin.le16(name.size))
+                    out.write(name)
+                    out.write(Bin.le16(d.type))
+                    out.write(Bin.le16(d.value.size))
+                    out.write(d.value)
+                }
+            }.toByteArray()
+
+            val rebuilt = ArrayList<AsfObject>()
+            var contentPlaced = false
+            var extendedPlaced = false
+            for (obj in objects) {
+                when {
+                    obj.guid.contentEquals(CONTENT_DESCRIPTION) -> {
+                        rebuilt.add(AsfObject(CONTENT_DESCRIPTION, content)); contentPlaced = true
+                    }
+                    obj.guid.contentEquals(EXTENDED_CONTENT) -> {
+                        if (descriptors.isNotEmpty()) rebuilt.add(AsfObject(EXTENDED_CONTENT, extended))
+                        extendedPlaced = true
+                    }
+                    else -> rebuilt.add(obj)
+                }
+            }
+            // Après File Properties (objet 1) pour respecter l'ordre usuel.
+            val insertAt = (rebuilt.indexOfFirst { it.guid.contentEquals(FILE_PROPERTIES) } + 1).coerceAtLeast(0)
+            if (!contentPlaced) rebuilt.add(insertAt, AsfObject(CONTENT_DESCRIPTION, content))
+            if (!extendedPlaced && descriptors.isNotEmpty()) {
+                rebuilt.add((insertAt + 1).coerceAtMost(rebuilt.size), AsfObject(EXTENDED_CONTENT, extended))
+            }
+
+            var newHeaderSize = 30L
+            rebuilt.forEach { newHeaderSize += 24 + it.body.size }
+            val newTotal = newHeaderSize + (total - headerSize)
+
+            BufferedOutputStream(FileOutputStream(target), 64 * 1024).use { out ->
+                out.write(HEADER_GUID)
+                out.write(Bin.le64(newHeaderSize))
+                out.write(Bin.le32(rebuilt.size.toLong()))
+                out.write(head, 28, 2)
+                for (obj in rebuilt) {
+                    var body = obj.body
+                    if (obj.guid.contentEquals(FILE_PROPERTIES) && body.size >= 40) {
+                        body = body.copyOf()
+                        Bin.le64(newTotal).copyInto(body, 16) // identifiant du fichier (16 octets) puis taille
+                    }
+                    out.write(obj.guid)
+                    out.write(Bin.le64(24L + body.size))
+                    out.write(body)
+                }
+                Bin.copyRange(raf, headerSize, total, out)
+            }
+        }
+    }
+
+    private fun readContentField(body: ByteArray, index: Int): String {
+        if (body.size < 10) return ""
+        var offset = 10
+        for (i in 0 until index) offset += Bin.readLe16(body, i * 2)
+        val length = Bin.readLe16(body, index * 2)
+        if (length < 2 || offset + length > body.size) return ""
+        return String(body, offset, length - 2, Charsets.UTF_16LE)
+    }
+
+    private fun parseDescriptors(body: ByteArray): List<Descriptor> {
+        val out = ArrayList<Descriptor>()
+        if (body.size < 2) return out
+        val count = Bin.readLe16(body, 0)
+        var p = 2
+        repeat(count) {
+            if (p + 2 > body.size) return out
+            val nameLength = Bin.readLe16(body, p); p += 2
+            if (p + nameLength + 4 > body.size) return out
+            val name = String(body, p, maxOf(nameLength - 2, 0), Charsets.UTF_16LE); p += nameLength
+            val type = Bin.readLe16(body, p); p += 2
+            val valueLength = Bin.readLe16(body, p); p += 2
+            if (p + valueLength > body.size) return out
+            out.add(Descriptor(name, type, body.copyOfRange(p, p + valueLength))); p += valueLength
+        }
+        return out
+    }
+
+    /** Recompresse la pochette en JPEG jusqu'à tenir dans la limite d'un descripteur ASF. */
+    private fun fitCover(jpeg: ByteArray): ByteArray {
+        val limit = MAX_VALUE_BYTES - 64
+        if (jpeg.size <= limit) return jpeg
+        val decoded = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
+            ?: throw UnsupportedContainerException("Pochette illisible")
+        var side = maxOf(decoded.width, decoded.height)
+        var quality = 80
+        while (true) {
+            val ratio = minOf(1f, side.toFloat() / maxOf(decoded.width, decoded.height))
+            val scaled = Bitmap.createScaledBitmap(
+                decoded, maxOf((decoded.width * ratio).toInt(), 1), maxOf((decoded.height * ratio).toInt(), 1), true
+            )
+            val out = ByteArrayOutputStream()
+            scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)
+            if (out.size() <= limit) return out.toByteArray()
+            if (quality > 40) quality -= 15 else side = (side * 0.8f).toInt()
+            if (side < 64) throw UnsupportedContainerException("Pochette trop volumineuse pour ASF")
+        }
+    }
+}
+EOF
+
+echo "  -> app/src/main/java/com/elg/music/data/repository/MatroskaTagWriter.kt"
+mkdir -p app/src/main/java/com/elg/music/data/repository
+cat << 'EOF' > app/src/main/java/com/elg/music/data/repository/MatroskaTagWriter.kt
+package com.elg.music.data.repository
+
+import com.elg.music.data.model.TagData
+import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.io.RandomAccessFile
+import java.security.SecureRandom
+
+/**
+ * MKV / MKA / WebM : les métadonnées sont écrites dans un élément `Tags` et la pochette dans un élément
+ * `Attachments` (fichier joint `cover.jpg`), tous deux ajoutés à la fin du Segment. Les anciens éléments `Tags` sont
+ * neutralisés en place (remplacés par un élément Void de même taille), ce qui laisse intacts les index (SeekHead, Cues).
+ * Les pièces jointes déjà présentes (polices de sous-titres…) sont conservées.
+ */
+object MatroskaTagWriter {
+
+    private const val ID_EBML = 0x1A45DFA3L
+    private const val ID_SEGMENT = 0x18538067L
+    private const val ID_TAGS = 0x1254C367L
+    private const val ID_TAG = 0x7373L
+    private const val ID_TARGETS = 0x63C0L
+    private const val ID_SIMPLE_TAG = 0x67C8L
+    private const val ID_TAG_NAME = 0x45A3L
+    private const val ID_TAG_STRING = 0x4487L
+    private const val ID_ATTACHMENTS = 0x1941A469L
+    private const val ID_ATTACHED_FILE = 0x61A7L
+    private const val ID_FILE_DESC = 0x467EL
+    private const val ID_FILE_NAME = 0x466EL
+    private const val ID_FILE_MIME = 0x4660L
+    private const val ID_FILE_DATA = 0x465CL
+    private const val ID_FILE_UID = 0x46AEL
+
+    private class Header(val id: Long, val idLength: Int, val sizeLength: Int, val size: Long, val unknown: Boolean)
+
+    private fun readHeader(raf: RandomAccessFile, position: Long, limit: Long): Header? {
+        if (position + 2 > limit) return null
+        raf.seek(position)
+        val first = raf.read()
+        if (first <= 0) return null
+        val idLength = Integer.numberOfLeadingZeros(first) - 24 + 1
+        if (idLength !in 1..4) return null
+        var id = first.toLong()
+        repeat(idLength - 1) { id = (id shl 8) or raf.readUnsignedByte().toLong() }
+        val sizeFirst = raf.read()
+        if (sizeFirst <= 0) return null
+        val sizeLength = Integer.numberOfLeadingZeros(sizeFirst) - 24 + 1
+        if (sizeLength !in 1..8) return null
+        var value = (sizeFirst and ((1 shl (8 - sizeLength)) - 1)).toLong()
+        var allOnes = value == ((1L shl (8 - sizeLength)) - 1)
+        repeat(sizeLength - 1) {
+            val b = raf.readUnsignedByte()
+            if (b != 0xFF) allOnes = false
+            value = (value shl 8) or b.toLong()
+        }
+        return Header(id, idLength, sizeLength, value, allOnes)
+    }
+
+    // ===================== Encodage EBML =====================
+
+    private fun idBytes(id: Long): ByteArray {
+        var length = 1
+        while ((id ushr (8 * length)) != 0L) length++
+        return ByteArray(length) { (id ushr (8 * (length - 1 - it))).toByte() }
+    }
+
+    private fun sizeBytes(size: Long, length: Int = minimalSizeLength(size)): ByteArray {
+        val out = ByteArray(length)
+        var v = size
+        for (i in length - 1 downTo 0) {
+            out[i] = v.toByte()
+            v = v ushr 8
+        }
+        out[0] = (out[0].toInt() or (0x80 shr (length - 1))).toByte()
+        return out
+    }
+
+    private fun minimalSizeLength(size: Long): Int {
+        for (length in 1..8) if (size < (1L shl (7 * length)) - 1) return length
+        throw UnsupportedContainerException("Élément Matroska trop grand")
+    }
+
+    private fun element(id: Long, payload: ByteArray): ByteArray =
+        Bin.concat(idBytes(id), sizeBytes(payload.size.toLong()), payload)
+
+    private fun uintElement(id: Long, value: Long): ByteArray {
+        var length = 1
+        while (length < 8 && (value ushr (8 * length)) != 0L) length++
+        return element(id, ByteArray(length) { (value ushr (8 * (length - 1 - it))).toByte() })
+    }
+
+    private fun textElement(id: Long, text: String): ByteArray = element(id, text.toByteArray(Charsets.UTF_8))
+
+    private fun simpleTag(name: String, value: String): ByteArray =
+        element(ID_SIMPLE_TAG, Bin.concat(textElement(ID_TAG_NAME, name), textElement(ID_TAG_STRING, value)))
+
+    private fun buildTags(tags: TagData): ByteArray? {
+        val simple = ByteArrayOutputStream()
+        fun add(name: String, value: String) {
+            if (value.isNotBlank()) simple.write(simpleTag(name, value.trim()))
+        }
+        add("TITLE", tags.title)
+        add("ARTIST", tags.artist)
+        add("ALBUM", tags.album)
+        add("ALBUM_ARTIST", tags.albumArtist)
+        add("GENRE", tags.genre)
+        add("DATE_RELEASED", tags.year)
+        add("PART_NUMBER", tags.trackNumber)
+        add("TOTAL_PARTS", tags.trackTotal)
+        add("DISC_NUMBER", tags.discNumber)
+        add("COMPOSER", tags.composer)
+        add("COPYRIGHT", tags.copyright)
+        add("PUBLISHER", tags.publisher)
+        add("ENCODER", tags.encoder)
+        add("LANGUAGE", tags.language)
+        add("COMMENT", tags.comment)
+        add("LYRICS", tags.lyrics)
+        if (simple.size() == 0) return null
+        val tag = element(ID_TAG, Bin.concat(element(ID_TARGETS, ByteArray(0)), simple.toByteArray()))
+        return element(ID_TAGS, tag)
+    }
+
+    private fun buildAttachments(jpeg: ByteArray): ByteArray {
+        val uid = (SecureRandom().nextLong() ushr 2) or 1L
+        val file = element(
+            ID_ATTACHED_FILE,
+            Bin.concat(
+                textElement(ID_FILE_DESC, "Cover"),
+                textElement(ID_FILE_NAME, "cover.jpg"),
+                textElement(ID_FILE_MIME, "image/jpeg"),
+                uintElement(ID_FILE_UID, uid),
+                element(ID_FILE_DATA, jpeg)
+            )
+        )
+        return element(ID_ATTACHMENTS, file)
+    }
+
+    // ===================== Écriture =====================
+
+    private class Patch(val offset: Long, val bytes: ByteArray)
+
+    fun write(source: File, target: File, tags: TagData, cover: ByteArray?) {
+        RandomAccessFile(source, "r").use { raf ->
+            val total = raf.length()
+            val ebml = readHeader(raf, 0, total)
+            if (ebml == null || ebml.id != ID_EBML) throw UnsupportedContainerException("En-tête EBML absent")
+            val segmentPosition = ebml.idLength + ebml.sizeLength + ebml.size
+            val segment = readHeader(raf, segmentPosition, total)
+            if (segment == null || segment.id != ID_SEGMENT) throw UnsupportedContainerException("Segment Matroska absent")
+            val payloadStart = segmentPosition + segment.idLength + segment.sizeLength
+            val segmentEnd = if (segment.unknown) total else payloadStart + segment.size
+            if (segmentEnd > total) throw UnsupportedContainerException("Segment tronqué")
+
+            val patches = ArrayList<Patch>()
+            var position = payloadStart
+            while (position < segmentEnd) {
+                val child = readHeader(raf, position, segmentEnd) ?: break
+                if (child.unknown) break
+                val headerLength = child.idLength + child.sizeLength
+                val elementLength = headerLength + child.size
+                if (position + elementLength > segmentEnd) break
+                if (child.id == ID_TAGS) {
+                    // Void (ID 0xEC, 1 octet) : taille codée sur (taille du champ d'origine + 3) octets, de même longueur totale.
+                    val voidSizeLength = child.sizeLength + (child.idLength - 1)
+                    if (voidSizeLength in 1..8 && child.size < (1L shl (7 * voidSizeLength)) - 1) {
+                        val bytes = Bin.concat(byteArrayOf(0xEC.toByte()), sizeBytes(child.size, voidSizeLength))
+                        patches.add(Patch(position, bytes))
+                    } else {
+                        throw UnsupportedContainerException("Impossible de neutraliser l'ancien élément Tags")
+                    }
+                }
+                position += elementLength
+            }
+
+            val appended = ByteArrayOutputStream()
+            buildTags(tags)?.let { appended.write(it) }
+            if (cover != null) appended.write(buildAttachments(cover))
+            val extra = appended.toByteArray()
+
+            if (!segment.unknown && extra.isNotEmpty()) {
+                val newSize = segment.size + extra.size
+                if (newSize >= (1L shl (7 * segment.sizeLength)) - 1) {
+                    throw UnsupportedContainerException("Taille du Segment trop grande pour son champ")
+                }
+                patches.add(Patch(segmentPosition + segment.idLength, sizeBytes(newSize, segment.sizeLength)))
+            }
+            patches.sortBy { it.offset }
+
+            BufferedOutputStream(FileOutputStream(target), 64 * 1024).use { out ->
+                var cursor = 0L
+                for (patch in patches) {
+                    Bin.copyRange(raf, cursor, patch.offset, out)
+                    out.write(patch.bytes)
+                    cursor = patch.offset + patch.bytes.size
+                }
+                Bin.copyRange(raf, cursor, segmentEnd, out)
+                out.write(extra)
+                Bin.copyRange(raf, segmentEnd, total, out)
+            }
+        }
+    }
+}
+EOF
+
 echo "[3/3] Verification rapide de la presence des fichiers cles..."
 MISSING=0
 if [ ! -s "app/debug.keystore" ]; then echo "MANQUANT: app/debug.keystore"; MISSING=1; fi
@@ -12293,6 +14373,17 @@ if [ ! -f "app/src/main/java/com/elg/music/data/repository/TagRepository.kt" ]; 
 if [ ! -f "app/src/main/java/com/elg/music/ui/tags/TagEditorActivity.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/ui/tags/TagEditorActivity.kt"; MISSING=1; fi
 if [ ! -f "app/src/main/res/layout/activity_tag_editor.xml" ]; then echo "MANQUANT: app/src/main/res/layout/activity_tag_editor.xml"; MISSING=1; fi
 if [ ! -f "app/src/main/res/layout/item_tag_field.xml" ]; then echo "MANQUANT: app/src/main/res/layout/item_tag_field.xml"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/local/PlaybackStateStore.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/local/PlaybackStateStore.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/playback/MediaItemFactory.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/playback/MediaItemFactory.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/repository/AudioTagWriter.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/repository/AudioTagWriter.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/repository/CoverCache.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/repository/CoverCache.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/repository/FlacTagWriter.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/repository/FlacTagWriter.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/repository/OggTagWriter.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/repository/OggTagWriter.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/repository/Mp4TagWriter.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/repository/Mp4TagWriter.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/repository/RiffTagWriter.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/repository/RiffTagWriter.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/repository/Apev2TagWriter.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/repository/Apev2TagWriter.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/repository/AsfTagWriter.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/repository/AsfTagWriter.kt"; MISSING=1; fi
+if [ ! -f "app/src/main/java/com/elg/music/data/repository/MatroskaTagWriter.kt" ]; then echo "MANQUANT: app/src/main/java/com/elg/music/data/repository/MatroskaTagWriter.kt"; MISSING=1; fi
 if [ "$MISSING" -eq 0 ]; then
   echo ""
   echo "=== ELG MUSIC : PROJET ET WORKFLOW GITHUB ACTIONS INSTALLES AVEC SUCCES ==="
