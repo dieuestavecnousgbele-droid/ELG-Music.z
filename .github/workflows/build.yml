@@ -21,8 +21,18 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Check generator scripts
+        run: |
+          for f in setup_elg_full.sh setup_elg_v16_module3.sh; do
+            if [ ! -f "$f" ]; then echo "ERREUR : $f est absent de la racine du depot"; exit 1; fi
+            sed -i 's/\r$//' "$f"
+          done
+
       - name: Generate ELG Music project files
         run: bash setup_elg_full.sh
+
+      - name: Apply v1.6 Module 3 (Settings)
+        run: bash setup_elg_v16_module3.sh
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -32,10 +42,10 @@ jobs:
       - name: Install Android SDK platform 36
         run: sdkmanager "platforms;android-36"
 
-      - name: Set up Gradle 8.13
+      - name: Set up Gradle 8.14
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: '8.13'
+          gradle-version: '8.14'
 
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
@@ -45,3 +55,4 @@ jobs:
         with:
           name: elg-music-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+bug/*.apk
